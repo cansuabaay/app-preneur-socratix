@@ -1,7 +1,8 @@
 # Socratix — Technical PRD
 
-**Platform:** iOS Native (Swift)
+**Platform:** Sadece iOS (Native)
 **Aşama:** Faz 1 — MVP
+**Hazırlayan:** Cansu Abay
 **Durum:** Onaylandı
 
 ---
