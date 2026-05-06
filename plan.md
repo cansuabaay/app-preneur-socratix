@@ -137,6 +137,7 @@ MVP mimarisi kasıtlı olarak basit, ancak temiz biçimde ayrılabilir tutulmal�
 - **Backend:** FastAPI REST API.
 - **Depolama:** In-memory Python yapıları (liste/sözlük).
 - **Entegrasyon:** CORS etkin endpoint'ler üzerinden frontend'den backend'e doğrudan HTTP.
+- **Week 4 Demo Modu:** Frontend mock veriyle backend'e bağımlı olmadan çalışabilmelidir.
 
 ### 5.2 Frontend Katmanı Sorumlulukları
 

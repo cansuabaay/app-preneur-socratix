@@ -58,7 +58,7 @@ Kullanıcının her gün girmesini sağlamak için şu döngüyü MVP'ye entegre
 
 ## 5. MVP Teknik Kısıtlar ve Seçimler
 
-- Platform: iOS Native (Swift) — kurumsal çalışanların mobil cihaz kullanım alışkanlıkları ve premium kullanıcı deneyimi hedefi doğrultusunda.
+- Platform: React + Vite web uygulaması — hızlı iterasyon, kolay demo paylaşımı ve kurumsal kullanımda düşük erişim bariyeri hedefi doğrultusunda.
 - AI Modeli: Şirket verisini korumak adına Azure OpenAI (GPT-4o) birincil seçenek; air-gapped kurumlar için self-hosted Llama 3 yedek seçenek olarak planlanmaktadır.
 - Loglama Altyapısı: Mixpanel veya Amplitude (davranış analizi) + Sentry (hata takibi).
 

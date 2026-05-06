@@ -1,6 +1,6 @@
 # Socratix — Technical PRD
 
-**Platform:** Sadece iOS (Native)
+**Platform:** Web Uygulaması (React + Vite)
 **Aşama:** Faz 1 — MVP
 **Hazırlayan:** Cansu Abay
 **Durum:** Onaylandı
@@ -21,7 +21,7 @@
 
 ## 1. Ürün Vizyonu ve İş Hedefleri (Özet)
 
-Socratix, kurumsal çalışanların fikirlerini AI mentorluğuyla olgunlaştırdığı, demokratik bir oylama sistemiyle en değerli fikirlerin yüzeye çıktığı ve her gün açılmak istenen bir inovasyon motoru iOS uygulamasıdır.
+Socratix, kurumsal çalışanların fikirlerini AI mentorluğuyla olgunlaştırdığı, demokratik bir oylama sistemiyle en değerli fikirlerin yüzeye çıktığı ve her gün açılmak istenen bir inovasyon motoru web uygulamasıdır.
 
 **Kuzey Yıldızı Metriği:** Platforma girilen ve AI desteğiyle "Tamamlandı" statüsüne ulaşan fikir sayısı.
 
@@ -31,11 +31,11 @@ Socratix, kurumsal çalışanların fikirlerini AI mentorluğuyla olgunlaştırd
 
 ## 2. Teknoloji Yığını ve Mimari
 
-MVP aşamasında hız, kurumsal veri güvenliği ve native iOS deneyimi dengesi gözetilmiştir.
+MVP aşamasında hız, kurumsal veri güvenliği ve hızlı web iterasyonu dengesi gözetilmiştir.
 
 | Katman | Teknoloji | Amaç |
 |---|---|---|
-| Mobil İstemci | iOS Native (Swift 5.9+, SwiftUI) | Akıcı animasyonlar, native UX |
+| Frontend İstemci | React 18 + Vite + JavaScript | Hızlı geliştirme, modern SPA deneyimi |
 | Backend API | FastAPI (Python) | Tüm iş mantığı ve AI yönlendirme |
 | Sunucu | Render | FastAPI deployment |
 | Veritabanı | Supabase (PostgreSQL) | İlişkisel veri |
@@ -43,11 +43,11 @@ MVP aşamasında hız, kurumsal veri güvenliği ve native iOS deneyimi dengesi 
 | AI Yedek | Llama 3 8B (Ollama, self-hosted) | Air-gapped kurumlar için |
 | Dosya Depolama | Supabase Storage | Profil görselleri |
 | Analitik | Mixpanel veya Amplitude | Davranışsal event tracking |
-| Hata Takibi | Sentry | iOS crash ve API hata izleme |
-| Bildirimler | APNs (Apple Push Notification) | Günlük digest, fikir durum bildirimleri |
-| Test Ortamı | Apple TestFlight | Beta dağıtım |
+| Hata Takibi | Sentry | Frontend hata ve API hata izleme |
+| Bildirimler | Web Push (opsiyonel) / E-posta | Günlük digest, fikir durum bildirimleri |
+| Test Ortamı | Vercel Preview / Netlify Preview | Demo ve paylaşılabilir test dağıtımı |
 
-> **Auth Notu:** Kurumsal SSO (SAML 2.0 / OIDC — Azure AD, Okta) birincil giriş yöntemi olarak planlanmaktadır. iOS tarafında `ASWebAuthenticationSession` ile entegre edilecektir. Karar Sprint 0'da netleştirilecektir.
+> **Auth Notu:** Kurumsal SSO (SAML 2.0 / OIDC — Azure AD, Okta) birincil giriş yöntemi olarak planlanmaktadır. Web tarafında redirect tabanlı OIDC akışı ile entegre edilecektir. Karar Sprint 0'da netleştirilecektir.
 
 ---
 
@@ -136,13 +136,13 @@ FastAPI üzerinden Supabase'e yazılacak ilişkisel veri modeli aşağıdaki gib
 
 ## 4. API Uç Noktaları (FastAPI — REST/JSON)
 
-Swift uygulamasının haberleşeceği temel uç noktalar. Tüm korumalı endpoint'ler `Authorization: Bearer <JWT>` header'ı gerektirir.
+React web istemcisinin haberleşeceği temel uç noktalar. Tüm korumalı endpoint'ler `Authorization: Bearer <JWT>` header'ı gerektirir.
 
 ### POST /api/v1/auth/sso
 
 Payload: `{ "identity_token": "string", "provider": "azure_ad" }`
 
-İşlem: SSO token'ı doğrulanır. Kullanıcı Supabase'de yoksa yaratılır, varsa getirilir. Geriye sisteme özel JWT döner. Token cihazda Keychain'e kaydedilir.
+İşlem: SSO token'ı doğrulanır. Kullanıcı Supabase'de yoksa yaratılır, varsa getirilir. Geriye sisteme özel JWT döner. Token güvenli frontend oturum yönetiminde saklanır.
 
 ---
 
@@ -199,17 +199,17 @@ Payload: `{ "accepted": true }`
 
 ### GET /api/v1/digest/daily
 
-İşlem: Kullanıcının ilgi alanına göre AI tarafından seçilmiş günün 3 fikrini döner. APNs bildirimi bu endpoint'e deep link içerir.
+İşlem: Kullanıcının ilgi alanına göre AI tarafından seçilmiş günün 3 fikrini döner. Web push/e-posta bildirimi bu endpoint'e deep link içerir.
 
 ---
 
 ## 5. Ekranlar ve Kullanıcı Akışı
 
-Arayüz tasarımı native iOS tasarım sistemine uygundur: SF Symbols, UIBlurEffect tabanlı buzlu cam kartları, UIImpactFeedbackGenerator haptic feedback ve Lottie animasyonları kullanılacaktır.
+Arayüz tasarımı modern, responsive web tasarım sistemine uygundur: tutarlı ikonografi, kart tabanlı bileşenler, micro-interaction animasyonları ve erişilebilirlik (a11y) standartları kullanılacaktır.
 
 ### Splash & Login Ekranı
 
-Temiz, beyaz arka plan. Ortada yalnızca uygulama logosu. Alt kısımda tek bir buton: "Kurumsal Hesapla Giriş Yap". ASWebAuthenticationSession ile SSO akışı başlatılır.
+Temiz, beyaz arka plan. Ortada uygulama logosu ve kısa değer önerisi metni. Ana aksiyon butonu: "Kurumsal Hesapla Giriş Yap". OAuth/OIDC redirect akışı başlatılır.
 
 ### Onboarding — İlk Kullanım Ekranı
 
@@ -219,19 +219,19 @@ SSO'dan gelen ad ve departman bilgisi gösterilir, kullanıcı onaylar. İlgi al
 
 Üst Bar: Uygulama adı, bildirim ikonu ve profil avatarı.
 
-Filtre: UISegmentedControl ile Tümü / Departmanım / Popüler / Yeni seçenekleri.
+Filtre: Sekme veya pill tabanlı filtrelerle Tümü / Departmanım / Popüler / Yeni seçenekleri.
 
-Fikir Kartı: Başlık, yazar adı, departman, yayın zamanı, durum etiketi, oy ve yorum sayacı, kaydet ikonu. Tek dokunuşla oy verilebilir (optimistic UI).
+Fikir Kartı: Başlık, yazar adı, departman, yayın zamanı, durum etiketi, oy ve yorum sayacı, kaydet ikonu. Tek tıklamayla oy verilebilir (optimistic UI).
 
-Floating Action Button: Sağ alt köşede sabit "Fikir Ekle" butonu.
+Floating Action Button (desktop + mobile uyumlu): Sağ alt köşede sabit "Fikir Ekle" butonu.
 
 ### Fikir Oluşturma Ekranı
 
-Tam ekran metin girişi (başlık ve açıklama). Kullanıcı yazarken 800ms debounce ile AI öneri paneli UISheetPresentationController aracılığıyla ekranın altından açılır. Panelde "Uygula" ve "Reddet" aksiyonları yer alır. Benzer fikir uyarısı inline banner olarak gösterilir.
+Tam ekran/modal metin girişi (başlık ve açıklama). Kullanıcı yazarken 800ms debounce ile AI öneri paneli drawer/modal olarak açılır. Panelde "Uygula" ve "Reddet" aksiyonları yer alır. Benzer fikir uyarısı inline banner olarak gösterilir.
 
 ### Devil's Advocate Ekranı
 
-Kullanıcı "Yayınla"ya bastığında bottom sheet açılır. AI, fikrin kategorisine özel 3-5 kritik soru üretir. Kullanıcı soruları yanıtlayabilir ya da "Atla" ile geçebilir. Her iki durumda da fikir yayınlanır.
+Kullanıcı "Yayınla"ya bastığında modal/drawer açılır. AI, fikrin kategorisine özel 3-5 kritik soru üretir. Kullanıcı soruları yanıtlayabilir ya da "Atla" ile geçebilir. Her iki durumda da fikir yayınlanır.
 
 ### Fikir Detay Ekranı
 
@@ -239,7 +239,7 @@ Başlık, açıklama, yazar bilgisi ve yayın tarihi gösterilir. Durum adımlar
 
 ### Günlük Digest Bildirimi
 
-Her sabah 08:30'da APNs push bildirimi gönderilir. Bildirime dokunulduğunda deep link ile GET /digest/daily çağrılır ve günün 3 fikri listelenir. Kullanıcı ayarlardan saat ve sıklık tercihini değiştirebilir.
+Her sabah 08:30'da web push veya e-posta bildirimi gönderilir. Bildirime tıklandığında deep link ile GET /digest/daily çağrılır ve günün 3 fikri listelenir. Kullanıcı ayarlardan saat ve sıklık tercihini değiştirebilir.
 
 ---
 
@@ -253,10 +253,10 @@ Hikaye: Bir çalışan olarak, ayrı şifre oluşturmak yerine şirket hesabıml
 
 Kabul Kriterleri:
 - Given: Kullanıcı uygulamayı ilk kez açmıştır.
-- When: "Kurumsal Hesapla Giriş Yap" butonuna basar ve ASWebAuthenticationSession ile SSO akışını tamamlarsa;
+- When: "Kurumsal Hesapla Giriş Yap" butonuna basar ve web SSO redirect akışını tamamlarsa;
 - Then: FastAPI tarafında token doğrulanmalı, Supabase'de users tablosunda kayıt yoksa oluşturulmalıdır.
-- And: JWT cihazın Keychain'ine kaydedilmeli; kullanıcı ilgi alanı seçmemişse Onboarding ekranına yönlendirilmelidir.
-- Hata Durumu: İnternet yoksa UIAlertController ile "Bağlantı hatası, lütfen tekrar deneyin" uyarısı gösterilmelidir.
+- And: JWT güvenli frontend oturumunda saklanmalı; kullanıcı ilgi alanı seçmemişse Onboarding ekranına yönlendirilmelidir.
+- Hata Durumu: İnternet yoksa kullanıcıya belirgin bir hata toast/banner mesajı gösterilmelidir.
 
 ---
 
@@ -269,7 +269,7 @@ Hikaye: Bir çalışan olarak, fikir yazarken AI'nın gerçek zamanlı öneriler
 Kabul Kriterleri:
 - Given: Kullanıcı "Fikir Ekle" ekranını açmıştır.
 - When: Başlık veya açıklama alanına 3 veya daha fazla kelime girerse (debounce: 800ms);
-- Then: POST /ideas çağrılmalı; AI öneri paneli ekranın altından UISheetPresentationController ile açılmalıdır.
+- Then: POST /ideas çağrılmalı; AI öneri paneli modal/drawer olarak açılmalıdır.
 - And: Öneri P95 latency < 3 saniye içinde görünmelidir.
 - And: Kullanıcı "Uygula" veya "Reddet"e her bastığında POST /ai/suggestions/:id/respond çağrılmalıdır.
 - And: Benzer fikir mevcutsa inline banner gösterilmeli ve ilgili fikre link verilmelidir.
@@ -281,7 +281,7 @@ Hikaye: Bir çalışan olarak, fikrimi yayınlamadan önce AI'nın zayıf noktal
 Kabul Kriterleri:
 - Given: Kullanıcı taslak fikri tamamlamış ve "Yayınla"ya basmıştır.
 - When: POST /ideas/:id/publish çağrılırsa;
-- Then: Bottom sheet açılmalı; AI fikrin kategorisine özel 3-5 soru üretmelidir. Generic sorular kabul edilmez.
+- Then: Modal/drawer açılmalı; AI fikrin kategorisine özel 3-5 soru üretmelidir. Generic sorular kabul edilmez.
 - And: Kullanıcı soruları yanıtlayabilmeli ya da "Atla" ile geçebilmelidir.
 - And: PATCH /ideas/:id/publish/confirm çağrılmalı; fikir "review" statüsüne geçmelidir.
 - And: Verilen yanıtlar fikrin detay sayfasında herkese görünür olmalıdır.
@@ -309,7 +309,7 @@ Hikaye: Bir çalışan olarak, beğendiğim fikirlere tek dokunuşla oy vermek i
 Kabul Kriterleri:
 - Given: Kullanıcı feed'de bir fikir kartı görüntülemektedir.
 - When: Oy ikonuna dokunursa;
-- Then: Optimistic UI ile oy sayacı anında güncellenmeli; UIImpactFeedbackGenerator ile hafif titreşim verilmelidir.
+- Then: Optimistic UI ile oy sayacı anında güncellenmelidir.
 - And: POST /ideas/:id/vote async olarak çağrılmalıdır.
 - And: Kullanıcı kendi fikrine dokunamazsa buton devre dışı olmalı ve açıklayıcı bir tooltip gösterilmelidir.
 - And: Günlük 20 oy limitine ulaşılırsa "Günlük oy limitine ulaştınız" banner'ı gösterilmelidir.
@@ -321,7 +321,7 @@ Hikaye: Bir çalışan olarak, her sabah ilgi alanıma göre seçilmiş 3 fikri 
 
 Kabul Kriterleri:
 - Given: Kullanıcı bildirim iznini vermiştir.
-- When: Sabah 08:30'da APNs bildirimi gelir ve kullanıcı bildirimi açarsa;
+- When: Sabah 08:30'da web push/e-posta bildirimi gelir ve kullanıcı bildirimi açarsa;
 - Then: Deep link ile GET /digest/daily çağrılmalı; günün 3 fikri listelenmelidir.
 - And: Her kart ilgili fikrin detay ekranına yönlendirmelidir.
 - And: Kullanıcı ayarlardan bildirim saatini (08:00–12:00 arası) ve sıklığını (günlük / haftalık) değiştirebilmelidir.
@@ -367,7 +367,7 @@ Kabul Kriterleri:
 | vote_cast | Oy verildi |
 | bookmark_added | Fikir kaydedildi |
 | feed_item_engaged | Kart 5 saniyeden uzun görüntülendi |
-| digest_notification_tapped | APNs bildirimine dokunuldu |
+| digest_notification_tapped | Web push/e-posta bildirimine tıklandı |
 
 > KVKK Notu: Tüm event'ler anonim user_id (UUID) ile loglanır. İsim veya e-posta analitik platformuna gönderilmez. Mixpanel / Amplitude ile veri işleme sözleşmesi (DPA) imzalanmalıdır.
 
@@ -375,7 +375,7 @@ Kabul Kriterleri:
 
 ## 7. Kapsam Dışı (Faz 1 İçin)
 
-- Android uygulaması (Faz 1 iOS ile doğrulama yapılacak)
+- Native mobil uygulamalar (iOS/Android) — web sonrası fazlarda değerlendirilecek
 - Yönetim paneli ve gelişmiş analitik dashboard
 - Jira / Confluence entegrasyonu
 - AI ile fikir birleştirme (merge) özelliği
