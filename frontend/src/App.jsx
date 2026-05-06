@@ -1,72 +1,35 @@
-import { useEffect, useState } from "react";
-import IdeaForm from "./components/IdeaForm";
-import IdeaList from "./components/IdeaList";
-import { createIdea, fetchIdeas, voteIdea } from "./services/ideaApi";
+import { Navigate, Route, Routes } from "react-router-dom";
+import LoginPage          from "./pages/LoginPage";
+import SignUpPage         from "./pages/SignUpPage";
+import ForgotPasswordPage from "./pages/ForgotPasswordPage";
+import DashboardPage      from "./pages/DashboardPage";
+import CreateIdeaPage     from "./pages/CreateIdeaPage";
+import DevilsAdvocatePage from "./pages/DevilsAdvocatePage";
+import IdeaDetailPage     from "./pages/IdeaDetailPage";
+import MessagesPage       from "./pages/MessagesPage";
+import ProfilePage        from "./pages/ProfilePage";
+import ProtectedRoute     from "./pages/ProtectedRoute";
 
-function App() {
-  const [ideas, setIdeas] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  const loadIdeas = async () => {
-    try {
-      setError("");
-      const data = await fetchIdeas();
-      setIdeas(data);
-    } catch (err) {
-      setError(err.message || "Unexpected error.");
-    }
-  };
-
-  useEffect(() => {
-    loadIdeas();
-  }, []);
-
-  const handleSubmit = async (payload) => {
-    setError("");
-
-    if (!payload.title.trim() || !payload.description.trim()) {
-      setError("Title and description are required.");
-      return false;
-    }
-
-    setLoading(true);
-    try {
-      await createIdea(payload);
-      await loadIdeas();
-      return true;
-    } catch (err) {
-      setError(err.message || "Unexpected error.");
-      return false;
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleVote = async (ideaId) => {
-    setError("");
-    try {
-      await voteIdea(ideaId);
-      await loadIdeas();
-    } catch (err) {
-      setError(err.message || "Unexpected error.");
-    }
-  };
-
+export default function App() {
   return (
-    <main className="container">
-      <header className="page-header">
-        <h1>Socratix</h1>
-        <p>Share and vote on ideas quickly.</p>
-      </header>
+    <Routes>
+      {/* Public auth screens */}
+      <Route path="/"       element={<Navigate to="/login" replace />} />
+      <Route path="/login"  element={<LoginPage />} />
+      <Route path="/signup" element={<SignUpPage />} />
+      <Route path="/forgot" element={<ForgotPasswordPage />} />
 
-      <IdeaForm onSubmit={handleSubmit} loading={loading} />
+      {/* Protected app screens */}
+      <Route element={<ProtectedRoute />}>
+        <Route path="/dashboard"        element={<DashboardPage />} />
+        <Route path="/create"           element={<CreateIdeaPage />} />
+        <Route path="/devil/:ideaId"    element={<DevilsAdvocatePage />} />
+        <Route path="/ideas/:ideaId"    element={<IdeaDetailPage />} />
+        <Route path="/messages"         element={<MessagesPage />} />
+        <Route path="/profile"          element={<ProfilePage />} />
+      </Route>
 
-      {error && <p className="error">{error}</p>}
-
-      <IdeaList ideas={ideas} onVote={handleVote} />
-    </main>
+      <Route path="*" element={<Navigate to="/login" replace />} />
+    </Routes>
   );
 }
-
-export default App;
