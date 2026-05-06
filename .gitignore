@@ -9,3 +9,4 @@ build/
 *.zip
 .DS_Store
 .env
+ios/
