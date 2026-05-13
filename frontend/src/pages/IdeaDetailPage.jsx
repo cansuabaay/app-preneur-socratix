@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
 import Icon from "../components/ds/Icon";
-import { getCategoryLabel, getDepartmentName, getUserById, users } from "../data/mockData";
+import { getCategoryLabel, getDepartmentName, getUserById } from "../data/mockData";
 import { useSocratixStore } from "../data/SocratixStoreProvider";
 
 const STATUS_INFO = {
@@ -46,6 +46,29 @@ export default function IdeaDetailPage() {
     return idea.authorName || getUserById(idea.authorId)?.name || "Team member";
   }, [idea]);
 
+  const voters = useMemo(() => {
+    if (!idea) return [];
+    const ids = idea.voters || [];
+    return ids.map((vid) => {
+      const sid = String(vid);
+      if (currentUser && sid === String(currentUser.id)) {
+        return { id: sid, name: currentUser.name };
+      }
+      return { id: sid, name: "Colleague" };
+    });
+  }, [idea, currentUser]);
+
+  const extraVoteCount = useMemo(() => {
+    if (!idea) return 0;
+    return Math.max(0, (idea.votes ?? 0) - (idea.voters || []).length);
+  }, [idea]);
+
+  const alreadyVoted = useMemo(() => {
+    if (!idea || !currentUser?.id) return false;
+    const voterIds = (idea.voters || []).map((v) => String(v));
+    return voterIds.includes(String(currentUser.id));
+  }, [idea, currentUser]);
+
   useEffect(() => {
     if (!idea) navigate("/dashboard", { replace: true });
   }, [idea, navigate]);
@@ -54,8 +77,6 @@ export default function IdeaDetailPage() {
 
   const badge = STATUS_INFO[idea.progressStatus] || { label: idea.progressStatus || "—", cls: "ds-badge-navy" };
   const canResumeDevil = idea.progressStatus === "devils_advocate";
-  const voters = users.slice(0, Math.min(idea.votes ?? 0, users.length));
-  const alreadyVoted = Boolean(currentUser?.id && (idea.voters || []).includes(currentUser.id));
 
   const handleVote = () => voteIdea(idea.id);
 
@@ -163,7 +184,7 @@ export default function IdeaDetailPage() {
                   {voters.map((u) => (
                     <Avatar key={u.id} name={u.name} size={30} />
                   ))}
-                  {(idea.votes ?? 0) > users.length && (
+                  {extraVoteCount > 0 && (
                     <div
                       className="ds-avatar"
                       style={{
@@ -173,7 +194,7 @@ export default function IdeaDetailPage() {
                         color: "var(--color-text-secondary)",
                       }}
                     >
-                      +{(idea.votes ?? 0) - users.length}
+                      +{extraVoteCount}
                     </div>
                   )}
                 </div>

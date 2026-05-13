@@ -8,6 +8,7 @@ const NAV = [
   { to: "/dashboard", icon: "dashboard", labelKey: "dashboard" },
   { to: "/create",    icon: "plus",      labelKey: "createIdea" },
   { to: "/messages",  icon: "comment",   labelKey: "messages" },
+  { to: "/users",     icon: "users",     labelKey: "usersNav" },
   { to: "/profile",   icon: "user",      labelKey: "profile" },
 ];
 

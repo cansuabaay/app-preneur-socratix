@@ -1,6 +1,6 @@
 ---
 name: Socratix Geliştirme Planı
-overview: Çalışanların fikir paylaştığı, akışta gördüğü ve oyladığı kurum içi inovasyon platformu. İlk çalışan sürüm — in-memory, auth yok, 3 endpoint.
+overview: Kurum içi inovasyon platformu — PostgreSQL + FastAPI + React; kimlik, fikir API, şifre sıfırlama, çok dillilik ve pano filtreleri.
 todos:
   - id: backend-scaffold
     content: FastAPI proje yapısını kur, CORS ekle, /docs çalışsın
@@ -37,6 +37,39 @@ todos:
     status: completed
   - id: e2e-test
     content: Oluşturma → akışta görme → oy verme akışını uçtan uca manuel test et
+    status: completed
+  - id: postgres-setup
+    content: PostgreSQL veritabanını kur, bağlantıyı doğrula ve .env yapılandırmasını ekle
+    status: completed
+  - id: sqlalchemy-persistence
+    content: SQLAlchemy ile kalıcı Idea ve User modelleri; in-memory yerine veritabanı
+    status: completed
+  - id: expanded-endpoints
+    content: GET detail, PUT, DELETE ve ek idea endpointlerini gerçek veritabanı ile tamamla
+    status: completed
+  - id: frontend-api-migration
+    content: Frontend veri katmanını gerçek backend API ile çalışacak şekilde güncelle (fikirler, auth)
+    status: completed
+  - id: persistence-e2e
+    content: Swagger ve frontend üzerinden create, list, vote ve persistence akışını uçtan uca test et
+    status: completed
+  - id: auth-jwt
+    content: Kayıt/giriş/JWT, /auth/me, Bearer koruması, frontend token ve oturum yenileme
+    status: completed
+  - id: users-directory
+    content: GET /users, People sayfası, kullanıcıya özel DM thread'leri (istemci tarafı)
+    status: completed
+  - id: password-reset
+    content: Şifre sıfırlama token tablosu, POST /auth/forgot-password ve /auth/reset-password, forgot UI
+    status: completed
+  - id: i18n-en-tr
+    content: EN/TR çevirileri (store I18N), localStorage dil kalıcılığı, pano/giriş/kayıt/mesajlar
+    status: completed
+  - id: dashboard-filters
+    content: Pano filtreleri — en yeni, popüler, departmanım; tarih sıralaması ve departman filtresi düzeltmeleri
+    status: completed
+  - id: user-scoped-messages
+    content: Mesaj thread'lerinin kullanıcıya özel olması; çıkışta temizlik
     status: completed
 isProject: false
 ---

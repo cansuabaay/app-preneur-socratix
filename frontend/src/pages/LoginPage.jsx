@@ -46,8 +46,8 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const { login, isAuthenticated, t } = useSocratixStore();
 
-  const [email, setEmail] = useState("alex.rivera@socratix.demo");
-  const [password, setPassword] = useState("demo1234");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -55,17 +55,24 @@ export default function LoginPage() {
     return <Navigate to="/dashboard" replace />;
   }
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!email.trim()) { setError("Work email is required."); return; }
-    if (!password) { setError("Password is required."); return; }
+    if (!email.trim()) { setError(t("loginEmailRequired")); return; }
+    if (!password) { setError(t("loginPasswordRequired")); return; }
     setError("");
     setLoading(true);
-    // simulate brief auth delay
-    setTimeout(() => {
-      login(email.trim());
+    try {
+      await login(email.trim(), password);
       navigate("/dashboard");
-    }, 400);
+    } catch (err) {
+      const message =
+        err?.status === 401
+          ? t("loginInvalidCreds")
+          : err?.message || t("loginFailed");
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -97,7 +104,7 @@ export default function LoginPage() {
               Socratix
             </div>
             <div style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginTop: 2 }}>
-              Corporate innovation platform
+              {t("brandTagline")}
             </div>
           </div>
         </div>
@@ -107,10 +114,10 @@ export default function LoginPage() {
             fontSize: "var(--text-2xl)", fontWeight: 800,
             color: "var(--color-text-primary)", margin: "0 0 var(--space-2)",
           }}>
-            Welcome back
+            {t("loginWelcomeBack")}
           </h1>
           <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-secondary)", margin: "0 0 var(--space-6)" }}>
-            {t("signIn")} to your innovation workspace.
+            {t("signIn")} {t("loginSignInBlurb")}
           </p>
 
           {error && (
@@ -122,7 +129,7 @@ export default function LoginPage() {
           <form className="ds-stack" onSubmit={handleSubmit}>
             {/* Email */}
             <div>
-              <label className="ds-label" htmlFor="login-email">Work email</label>
+              <label className="ds-label" htmlFor="login-email">{t("loginEmailLabel")}</label>
               <div style={{ position: "relative" }}>
                 <span style={{
                   position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)",
@@ -145,7 +152,7 @@ export default function LoginPage() {
 
             <PasswordInput
               id="login-password"
-              label="Password"
+              label={t("loginPasswordLabel")}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
@@ -162,7 +169,7 @@ export default function LoginPage() {
               disabled={loading}
               style={{ marginTop: "var(--space-2)", padding: "0.85rem" }}
             >
-              {loading ? "…" : t("signIn")}
+              {loading ? t("loadingEllipsis") : t("signIn")}
               {!loading && <Icon name="chevronRight" size={16} />}
             </button>
           </form>
@@ -170,7 +177,7 @@ export default function LoginPage() {
           <div className="ds-divider" style={{ margin: "var(--space-6) 0" }} />
 
           <p style={{ textAlign: "center", fontSize: "var(--text-sm)", color: "var(--color-text-muted)", margin: 0 }}>
-            New to Socratix?{" "}
+            {t("loginNewPrompt")}{" "}
             <Link to="/signup" style={{ color: "var(--color-brand)", fontWeight: 700 }}>
               {t("signUp")}
             </Link>
@@ -178,7 +185,7 @@ export default function LoginPage() {
         </div>
 
         <p style={{ textAlign: "center", fontSize: "var(--text-xs)", color: "var(--color-text-muted)", marginTop: "var(--space-6)" }}>
-          This is an MVP demo — no data leaves your browser.
+          {t("loginFooter")}
         </p>
       </div>
     </div>

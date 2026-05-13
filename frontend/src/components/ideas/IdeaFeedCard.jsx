@@ -5,19 +5,32 @@ import {
   getDepartmentName,
   getUserById,
 } from "../../data/mockData";
+import { useSocratixStore } from "../../data/SocratixStoreProvider";
 
-const STATUS_BADGE = {
-  draft:           { label: "Draft",            cls: "ds-badge-warning" },
-  ai_enhanced:     { label: "AI Enhanced",      cls: "ds-badge-accent" },
-  devils_advocate: { label: "Devil's Advocate", cls: "ds-badge-purple" },
-  published:       { label: "In Portfolio",     cls: "ds-badge-success" },
+const STATUS_KEYS = {
+  draft: "statusDraft",
+  ai_enhanced: "statusAiEnhanced",
+  devils_advocate: "statusDevilsAdvocate",
+  published: "statusPublished",
+};
+
+const STATUS_CLS = {
+  draft: "ds-badge-warning",
+  ai_enhanced: "ds-badge-accent",
+  devils_advocate: "ds-badge-purple",
+  published: "ds-badge-success",
 };
 
 export default function IdeaFeedCard({ idea }) {
-  const author = idea.authorName || getUserById(idea.authorId)?.name || "Team member";
+  const { t } = useSocratixStore();
+  const statusKey = STATUS_KEYS[idea.progressStatus];
+  const badge = statusKey
+    ? { label: t(statusKey), cls: STATUS_CLS[idea.progressStatus] || "ds-badge-navy" }
+    : { label: idea.progressStatus || "—", cls: "ds-badge-navy" };
+
+  const author = idea.authorName || getUserById(idea.authorId)?.name || t("teamMember");
   const dept   = getDepartmentName(idea.departmentId);
   const cat    = getCategoryLabel(idea.categoryId);
-  const badge  = STATUS_BADGE[idea.progressStatus] || { label: idea.progressStatus || "—", cls: "ds-badge-navy" };
 
   return (
     <Link to={`/ideas/${idea.id}`} style={{ textDecoration: "none", color: "inherit" }}>

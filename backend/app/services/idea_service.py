@@ -1,47 +1,96 @@
-from typing import List
+from datetime import datetime
+from uuid import UUID
+
+from sqlalchemy.orm import Session
 
 from app.models.idea import Idea
-from app.schemas.idea import IdeaCreate, IdeaResponse
+from app.schemas.idea import CommentRequest, DevilRequest, IdeaCreate, IdeaUpdate, VoteRequest
 
 
 class IdeaService:
-    def __init__(self) -> None:
-        self._ideas: List[Idea] = []
-        self._next_id = 1
+    def list_ideas(self, db: Session) -> list[Idea]:
+        return db.query(Idea).order_by(Idea.createdAt.desc()).all()
 
-    def list_ideas(self) -> List[IdeaResponse]:
-        sorted_ideas = sorted(self._ideas, key=lambda i: i.created_at, reverse=True)
-        return [self._to_response(idea) for idea in sorted_ideas]
+    def get_idea(self, db: Session, idea_id: UUID) -> Idea | None:
+        return db.query(Idea).filter(Idea.id == idea_id).first()
 
-    def create_idea(self, payload: IdeaCreate) -> IdeaResponse:
-        idea = Idea(
-            id=self._next_id,
-            title=payload.title.strip(),
-            description=payload.description.strip(),
-            votes=0,
+    def create_idea(self, db: Session, payload: IdeaCreate) -> Idea:
+        data = payload.model_dump(exclude_unset=True)
+        data["title"] = data["title"].strip()
+        data["description"] = data["description"].strip()
+        data.setdefault("votes", 0)
+        data.setdefault("progressStatus", "devils_advocate")
+        data.setdefault("aiReviewed", False)
+        data.setdefault("voters", [])
+        data.setdefault("comments", [])
+        data.setdefault("devilQuestions", [])
+        data.setdefault("devilAnswers", [])
+        data.setdefault("devilSkipped", False)
+
+        idea = Idea(**data)
+        db.add(idea)
+        db.commit()
+        db.refresh(idea)
+        return idea
+
+    def update_idea(self, db: Session, idea: Idea, payload: IdeaUpdate) -> Idea:
+        data = payload.model_dump(exclude_unset=True)
+        for field, value in data.items():
+            if isinstance(value, str) and field in {"title", "description"}:
+                value = value.strip()
+            setattr(idea, field, value)
+        db.commit()
+        db.refresh(idea)
+        return idea
+
+    def delete_idea(self, db: Session, idea: Idea) -> None:
+        db.delete(idea)
+        db.commit()
+
+    def vote_idea(self, db: Session, idea: Idea, payload: VoteRequest | None = None) -> Idea:
+        user_id = payload.userId if payload else None
+        voters = list(idea.voters or [])
+
+        if user_id and user_id not in voters:
+            voters.append(user_id)
+            idea.voters = voters
+
+        idea.votes = (idea.votes or 0) + 1
+
+        db.commit()
+        db.refresh(idea)
+        return idea
+
+    def submit_devil(self, db: Session, idea: Idea, payload: DevilRequest) -> Idea:
+        if payload.questions is not None:
+            idea.devilQuestions = payload.questions
+
+        idea.devilAnswers = payload.answers
+        idea.devilSkipped = payload.skipped
+        idea.progressStatus = "published"
+
+        db.commit()
+        db.refresh(idea)
+        return idea
+
+    def add_comment(self, db: Session, idea: Idea, payload: CommentRequest) -> Idea:
+        comments = list(idea.comments or [])
+
+        comments.append(
+            {
+                "id": f"c-{int(datetime.utcnow().timestamp() * 1000)}",
+                "authorId": payload.authorId,
+                "authorName": payload.authorName or "Colleague",
+                "body": payload.body.strip(),
+                "createdAt": datetime.utcnow().isoformat(),
+            }
         )
-        self._ideas.append(idea)
-        self._next_id += 1
-        return self._to_response(idea)
 
-    def vote_idea(self, idea_id: int) -> IdeaResponse:
-        for idea in self._ideas:
-            if idea.id == idea_id:
-                idea.votes += 1
-                return self._to_response(idea)
-        raise ValueError("Idea not found")
+        idea.comments = comments
 
-    @staticmethod
-    def _to_response(idea: Idea) -> IdeaResponse:
-        return IdeaResponse(
-            id=idea.id,
-            title=idea.title,
-            description=idea.description,
-            votes=idea.votes,
-            status=idea.status,
-            created_at=idea.created_at,
-            ai_suggestions=idea.ai_suggestions,
-        )
+        db.commit()
+        db.refresh(idea)
+        return idea
 
 
 idea_service = IdeaService()

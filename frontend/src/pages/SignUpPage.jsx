@@ -18,10 +18,10 @@ export default function SignUpPage() {
   const navigate = useNavigate();
   const { signUp, isAuthenticated, t } = useSocratixStore();
 
-  const [name, setName]           = useState("Alex Rivera");
-  const [email, setEmail]         = useState("alex.rivera@socratix.demo");
-  const [password, setPassword]   = useState("demo1234");
-  const [confirm, setConfirm]     = useState("demo1234");
+  const [name, setName]           = useState("");
+  const [email, setEmail]         = useState("");
+  const [password, setPassword]   = useState("");
+  const [confirm, setConfirm]     = useState("");
   const [showPass, setShowPass]   = useState(false);
   const [deptId, setDeptId]       = useState("dept-rd");
   const [interests, setInterests] = useState(new Set(["cat-product", "cat-efficiency"]));
@@ -45,19 +45,29 @@ export default function SignUpPage() {
       return n;
     });
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!name.trim())       { setError("Full name is required."); return; }
-    if (!email.trim())      { setError("Work email is required."); return; }
-    if (password.length < 4){ setError("Use at least 4 characters for your demo password."); return; }
-    if (password !== confirm){ setError("Passwords do not match."); return; }
-    if (interests.size === 0){ setError("Select at least one innovation theme."); return; }
+    if (!name.trim())       { setError(t("signUpNameRequired")); return; }
+    if (!email.trim())      { setError(t("signUpEmailRequired")); return; }
+    if (password.length < 6){ setError(t("signUpPasswordTooShort")); return; }
+    if (password !== confirm){ setError(t("signUpPasswordMismatch")); return; }
+    if (interests.size === 0){ setError(t("signUpThemesRequired")); return; }
     setError("");
     setLoading(true);
-    setTimeout(() => {
-      signUp({ name: name.trim(), email: email.trim(), departmentId: deptId, interests: Array.from(interests) });
+    try {
+      await signUp({
+        name: name.trim(),
+        email: email.trim(),
+        password,
+        departmentId: deptId,
+        interests: Array.from(interests),
+      });
       navigate("/dashboard");
-    }, 450);
+    } catch (err) {
+      setError(err?.message || t("signUpFailed"));
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -89,7 +99,7 @@ export default function SignUpPage() {
               Socratix
             </div>
             <div style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)", marginTop: 2 }}>
-              Corporate innovation platform
+              {t("brandTagline")}
             </div>
           </div>
         </div>
@@ -99,10 +109,10 @@ export default function SignUpPage() {
             fontSize: "var(--text-2xl)", fontWeight: 800,
             color: "var(--color-text-primary)", margin: "0 0 var(--space-2)",
           }}>
-            Create your workspace
+            {t("signUpWorkspaceTitle")}
           </h1>
           <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-secondary)", margin: "0 0 var(--space-6)" }}>
-            Set up your innovation profile — takes 30 seconds.
+            {t("signUpWorkspaceSubtitle")}
           </p>
 
           {error && (
@@ -113,14 +123,14 @@ export default function SignUpPage() {
 
           <form className="ds-stack" onSubmit={handleSubmit}>
             {/* Full name */}
-            <Field id="su-name" label="Full name">
+            <Field id="su-name" label={t("signUpFullName")}>
               <input id="su-name" type="text" value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="ds-input" placeholder="e.g. Jordan Okonkwo" autoComplete="name" />
             </Field>
 
             {/* Email */}
-            <Field id="su-email" label="Work email">
+            <Field id="su-email" label={t("loginEmailLabel")}>
               <div style={{ position: "relative" }}>
                 <span style={{
                   position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)",
@@ -138,12 +148,12 @@ export default function SignUpPage() {
             {/* Passwords side by side */}
             <div className="ds-row" style={{ alignItems: "flex-start", flexWrap: "wrap", gap: "var(--space-3)" }}>
               <div style={{ flex: "1 1 180px" }}>
-                <label className="ds-label" htmlFor="su-pass">Password</label>
+                <label className="ds-label" htmlFor="su-pass">{t("signUpPassword")}</label>
                 <div style={{ position: "relative" }}>
                   <input id="su-pass" type={showPass ? "text" : "password"} value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="ds-input" style={{ paddingRight: "2.6rem" }}
-                    placeholder="≥ 4 chars (demo)" autoComplete="new-password" />
+                    placeholder={t("signUpPasswordHint")} autoComplete="new-password" />
                   <button type="button" onClick={() => setShowPass((s) => !s)}
                     style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
                       background: "none", border: "none", cursor: "pointer",
@@ -153,15 +163,15 @@ export default function SignUpPage() {
                 </div>
               </div>
               <div style={{ flex: "1 1 180px" }}>
-                <label className="ds-label" htmlFor="su-confirm">Confirm password</label>
+                <label className="ds-label" htmlFor="su-confirm">{t("signUpConfirmPassword")}</label>
                 <input id="su-confirm" type={showPass ? "text" : "password"} value={confirm}
                   onChange={(e) => setConfirm(e.target.value)}
-                  className="ds-input" placeholder="Repeat password" autoComplete="new-password" />
+                  className="ds-input" placeholder={t("signUpRepeatPassword")} autoComplete="new-password" />
               </div>
             </div>
 
             {/* Department */}
-            <Field id="su-dept" label="Department">
+            <Field id="su-dept" label={t("signUpDepartment")}>
               <select id="su-dept" value={deptId}
                 onChange={(e) => setDeptId(e.target.value)} className="ds-select">
                 {deptOptions.map((o) => (
@@ -172,7 +182,7 @@ export default function SignUpPage() {
 
             {/* Interest chips */}
             <div>
-              <span className="ds-label">Innovation themes you care about</span>
+              <span className="ds-label">{t("signUpThemes")}</span>
               <div className="ds-chip-group">
                 {categories.map((c) => (
                   <button key={c.id} type="button"
@@ -190,14 +200,14 @@ export default function SignUpPage() {
               disabled={loading}
               style={{ marginTop: "var(--space-2)", padding: "0.85rem" }}
             >
-              {loading ? "…" : t("createAccount")}
+              {loading ? t("loadingEllipsis") : t("createAccount")}
               {!loading && <Icon name="chevronRight" size={16} />}
             </button>
           </form>
 
           <div className="ds-divider" style={{ margin: "var(--space-6) 0" }} />
           <p style={{ textAlign: "center", fontSize: "var(--text-sm)", color: "var(--color-text-muted)", margin: 0 }}>
-            Already have access?{" "}
+            {t("signUpAlreadyHave")}{" "}
             <Link to="/login" style={{ color: "var(--color-brand)", fontWeight: 700 }}>{t("signIn")}</Link>
           </p>
         </div>

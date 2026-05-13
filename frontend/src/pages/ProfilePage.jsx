@@ -166,7 +166,7 @@ export default function ProfilePage() {
           {t("logout")}
         </button>
         <p style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)", marginTop: "var(--space-2)" }}>
-          All session state will be cleared. Mock data resets on next sign-in.
+          {t("profileLogoutHint")}
         </p>
       </div>
     </AppShell>

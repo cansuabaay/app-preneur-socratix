@@ -13,11 +13,25 @@ function formatTime(iso) {
 
 export default function MessagesPage() {
   const { messageThreads, currentUser, sendMessage, t } = useSocratixStore();
-  const [activeId, setActiveId] = useState(messageThreads[0]?.id);
+  const [activeId, setActiveId] = useState();
   const [draft, setDraft] = useState("");
   const bottomRef = useRef(null);
 
-  const active = messageThreads.find((t) => t.id === activeId) || messageThreads[0];
+  useEffect(() => {
+    const focus = sessionStorage.getItem("socratix_focus_thread");
+    if (focus && messageThreads.some((th) => th.id === focus)) {
+      setActiveId(focus);
+      sessionStorage.removeItem("socratix_focus_thread");
+      return;
+    }
+    setActiveId((prev) =>
+      prev && messageThreads.some((th) => th.id === prev)
+        ? prev
+        : messageThreads[0]?.id
+    );
+  }, [messageThreads]);
+
+  const active = messageThreads.find((th) => th.id === activeId) || messageThreads[0];
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -25,7 +39,7 @@ export default function MessagesPage() {
 
   const handleSend = () => {
     const text = draft.trim();
-    if (!text) return;
+    if (!text || !active?.id) return;
     sendMessage(active.id, text);
     setDraft("");
   };
@@ -43,7 +57,7 @@ export default function MessagesPage() {
         <div>
           <h1 className="ds-heading-2">{t("messages")}</h1>
           <p className="ds-body-sm" style={{ marginTop: "var(--space-1)" }}>
-            Discuss ideas and get coaching from your Socratix team.
+            {t("messagesSubtitle")}
           </p>
         </div>
       </div>
@@ -59,13 +73,13 @@ export default function MessagesPage() {
       >
         {/* Thread list */}
         <div className="ds-stack-sm">
-          {messageThreads.map((t) => {
-            const isActive = t.id === active?.id;
+          {messageThreads.map((thread) => {
+            const isActive = thread.id === active?.id;
             return (
               <button
-                key={t.id}
+                key={thread.id}
                 type="button"
-                onClick={() => setActiveId(t.id)}
+                onClick={() => setActiveId(thread.id)}
                 style={{
                   width: "100%",
                   background: isActive
@@ -88,13 +102,13 @@ export default function MessagesPage() {
                     width: 36,
                     height: 36,
                     fontSize: "0.65rem",
-                    background: t.avatarColor
-                      ? `linear-gradient(135deg, ${t.avatarColor}, ${t.avatarColor}99)`
+                    background: thread.avatarColor
+                      ? `linear-gradient(135deg, ${thread.avatarColor}, ${thread.avatarColor}99)`
                       : undefined,
                     flexShrink: 0,
                   }}
                 >
-                  {t.avatarInitials}
+                  {thread.avatarInitials}
                 </div>
                 <div style={{ overflow: "hidden" }}>
                   <div
@@ -107,10 +121,10 @@ export default function MessagesPage() {
                       textOverflow: "ellipsis",
                     }}
                   >
-                    {t.name}
+                    {thread.name}
                   </div>
                   <div style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)", marginTop: 2 }}>
-                    {t.role}
+                    {thread.role}
                   </div>
                 </div>
               </button>
@@ -225,7 +239,7 @@ export default function MessagesPage() {
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={handleKey}
-                placeholder="Write a message… (Enter to send)"
+                placeholder={t("messagesPlaceholder")}
                 style={{ minHeight: 0, flex: 1, resize: "none" }}
               />
               <button
