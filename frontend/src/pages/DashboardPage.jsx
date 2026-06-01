@@ -4,37 +4,32 @@ import AppShell from "../components/layout/AppShell";
 import IdeaFeedCard from "../components/ideas/IdeaFeedCard";
 import Icon from "../components/ds/Icon";
 import { useSocratixStore } from "../data/SocratixStoreProvider";
+import { useTranslation } from "../i18n/useTranslation";
+
+const FILTERS = [
+  { key: "all", labelKey: "filterAll" },
+  { key: "department", labelKey: "filterDepartment" },
+  { key: "popular", labelKey: "filterPopular" },
+  { key: "new", labelKey: "filterNew" },
+];
 
 export default function DashboardPage() {
   const [filter, setFilter] = useState("all");
-  const { getFilteredIdeas, currentUser, t } = useSocratixStore();
-
-  const filters = useMemo(
-    () => [
-      { key: "all", labelKey: "filterAll" },
-      { key: "department", labelKey: "filterDepartment" },
-      { key: "popular", labelKey: "filterPopular" },
-      { key: "new", labelKey: "filterNew" },
-    ],
-    []
-  );
+  const { getFilteredIdeas, currentUser } = useSocratixStore();
+  const { t } = useTranslation();
 
   const ideas = useMemo(() => getFilteredIdeas(filter), [getFilteredIdeas, filter]);
 
-  const welcomeLine = currentUser
-    ? t("dashboardWelcome").replace(
-        "{name}",
-        currentUser.name.split(" ")[0] || currentUser.name
-      )
-    : t("dashboardWelcomeGuest");
-
   return (
     <AppShell>
+      {/* Page header */}
       <div className="ds-row-between">
         <div>
           <h1 className="ds-heading-1">{t("dashboardTitle")}</h1>
           <p className="ds-body" style={{ marginTop: "var(--space-2)" }}>
-            {welcomeLine}
+            {currentUser
+              ? t("dashboardWelcome", { name: currentUser.name.split(" ")[0] })
+              : t("dashboardWelcomeGuest")}
           </p>
         </div>
         <Link to="/create" className="ds-btn ds-btn-primary" style={{ flexShrink: 0 }}>
@@ -43,8 +38,9 @@ export default function DashboardPage() {
         </Link>
       </div>
 
-      <div className="ds-tabs" role="tablist" aria-label={t("dashboardTitle")}>
-        {filters.map((f) => (
+      {/* Filter tabs */}
+      <div className="ds-tabs" role="tablist" aria-label={t("filterTabAria")}>
+        {FILTERS.map((f) => (
           <button
             key={f.key}
             type="button"
@@ -58,6 +54,7 @@ export default function DashboardPage() {
         ))}
       </div>
 
+      {/* Feed */}
       {ideas.length === 0 ? (
         <div
           style={{
@@ -82,7 +79,8 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <Link to="/create" className="ds-btn-floating" aria-label={t("createIdea")}>
+      {/* FAB */}
+      <Link to="/create" className="ds-btn-floating" aria-label={t("fabCreateAria")}>
         <Icon name="plus" size={18} />
         {t("createIdea")}
       </Link>

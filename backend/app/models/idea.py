@@ -19,7 +19,7 @@ class Idea(Base):
     authorId: Mapped[str | None] = mapped_column(String(100), nullable=True)
     authorName: Mapped[str | None] = mapped_column(String(120), nullable=True)
     votes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    progressStatus: Mapped[str] = mapped_column(String(50), nullable=False, default="devils_advocate")
+    progressStatus: Mapped[str] = mapped_column(String(50), nullable=False, default="draft")
     aiReviewed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     createdAt: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     voters: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)

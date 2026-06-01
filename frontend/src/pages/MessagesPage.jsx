@@ -1,7 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import AppShell from "../components/layout/AppShell";
 import Icon from "../components/ds/Icon";
+import { getDepartmentName } from "../data/mockData";
 import { useSocratixStore } from "../data/SocratixStoreProvider";
+import { useTranslation } from "../i18n/useTranslation";
+import { messagesApi } from "../services/api";
+
+const AVATAR_COLORS = ["#4f8ef7", "#6366f1", "#a855f7", "#0d9488", "#f97316", "#2563eb"];
 
 function formatTime(iso) {
   const d = new Date(iso);
@@ -11,37 +16,129 @@ function formatTime(iso) {
   return d.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
+function makeInitials(name) {
+  return (name || "?")
+    .split(" ")
+    .map((p) => p[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
+function avatarColorFor(id) {
+  const key = String(id ?? "");
+  const hash = key.split("").reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
+}
+
 export default function MessagesPage() {
-  const { messageThreads, currentUser, sendMessage, t } = useSocratixStore();
-  const [activeId, setActiveId] = useState();
+  const { currentUser } = useSocratixStore();
+  const { t } = useTranslation();
+
+  const [directory, setDirectory] = useState([]);
+  const [loadStatus, setLoadStatus] = useState("loading");
+  const [loadError, setLoadError] = useState("");
+  const [selectedId, setSelectedId] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [loadingConversation, setLoadingConversation] = useState(false);
+  const [conversationError, setConversationError] = useState("");
   const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
   const bottomRef = useRef(null);
 
+  const meId = currentUser?.id != null ? String(currentUser.id) : "";
+
   useEffect(() => {
-    const focus = sessionStorage.getItem("socratix_focus_thread");
-    if (focus && messageThreads.some((th) => th.id === focus)) {
-      setActiveId(focus);
-      sessionStorage.removeItem("socratix_focus_thread");
+    let active = true;
+
+    messagesApi
+      .listUsers()
+      .then((users) => {
+        if (!active) return;
+        setDirectory(Array.isArray(users) ? users : []);
+        setLoadStatus("ready");
+      })
+      .catch((err) => {
+        if (!active) return;
+        setLoadError(err?.message || t("messagesLoadDirectoryError"));
+        setLoadStatus("error");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [t]);
+
+  useEffect(() => {
+    if (loadStatus !== "ready" || directory.length === 0) {
+      setSelectedId(null);
       return;
     }
-    setActiveId((prev) =>
-      prev && messageThreads.some((th) => th.id === prev)
-        ? prev
-        : messageThreads[0]?.id
-    );
-  }, [messageThreads]);
 
-  const active = messageThreads.find((th) => th.id === activeId) || messageThreads[0];
+    const preselect = sessionStorage.getItem("socratix_messages_peer");
+    setSelectedId((prev) => {
+      if (preselect && directory.some((u) => String(u.id) === preselect)) {
+        sessionStorage.removeItem("socratix_messages_peer");
+        return preselect;
+      }
+      if (prev && directory.some((u) => String(u.id) === String(prev))) return prev;
+      return directory[0].id;
+    });
+  }, [loadStatus, directory]);
+
+  const selected = directory.find((u) => String(u.id) === String(selectedId)) ?? null;
+
+  const loadConversation = useCallback(async (peerId) => {
+    if (!peerId) {
+      setMessages([]);
+      return;
+    }
+
+    setLoadingConversation(true);
+    setConversationError("");
+
+    try {
+      const rows = await messagesApi.getConversation(peerId);
+      setMessages(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      setConversationError(err?.message || t("messagesLoadConversationError"));
+      setMessages([]);
+    } finally {
+      setLoadingConversation(false);
+    }
+  }, [t]);
+
+  useEffect(() => {
+    if (!selected) {
+      setMessages([]);
+      return;
+    }
+    loadConversation(selected.id);
+  }, [selected?.id, loadConversation]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [active?.messages?.length]);
+  }, [messages.length, selectedId]);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     const text = draft.trim();
-    if (!text || !active?.id) return;
-    sendMessage(active.id, text);
-    setDraft("");
+    if (!text || !selected || sending) return;
+
+    setSending(true);
+    setConversationError("");
+
+    try {
+      await messagesApi.send({
+        receiverId: selected.id,
+        content: text,
+      });
+      setDraft("");
+      await loadConversation(selected.id);
+    } catch (err) {
+      setConversationError(err?.message || t("messagesSendError"));
+    } finally {
+      setSending(false);
+    }
   };
 
   const handleKey = (e) => {
@@ -50,6 +147,8 @@ export default function MessagesPage() {
       handleSend();
     }
   };
+
+  const peerColor = selected ? avatarColorFor(selected.id) : null;
 
   return (
     <AppShell>
@@ -62,24 +161,76 @@ export default function MessagesPage() {
         </div>
       </div>
 
+      {loadError && (
+        <div className="ds-alert ds-alert-error" style={{ marginTop: "var(--space-4)" }}>
+          {loadError}
+        </div>
+      )}
+
       <div
+        className="messages-grid"
         style={{
           display: "grid",
-          gridTemplateColumns: "220px 1fr",
+          gridTemplateColumns: "minmax(200px, 260px) 1fr",
           gap: "var(--space-4)",
           alignItems: "stretch",
           minHeight: 520,
+          marginTop: "var(--space-5)",
         }}
       >
-        {/* Thread list */}
-        <div className="ds-stack-sm">
-          {messageThreads.map((thread) => {
-            const isActive = thread.id === active?.id;
+        <div
+          className="ds-stack-sm"
+          style={{
+            background: "rgba(255,255,255,0.02)",
+            border: "1px solid var(--color-border)",
+            borderRadius: "var(--radius-xl)",
+            padding: "var(--space-3)",
+            minHeight: 320,
+          }}
+        >
+          {loadStatus === "loading" && (
+            <p className="ds-body-sm" style={{ padding: "var(--space-3)", color: "var(--color-text-muted)" }}>
+              {t("messagesLoadingTeammates")}
+            </p>
+          )}
+
+          {loadStatus === "ready" && directory.length === 0 && (
+            <div
+              style={{
+                padding: "var(--space-5) var(--space-4)",
+                textAlign: "center",
+                color: "var(--color-text-secondary)",
+              }}
+            >
+              <div
+                style={{
+                  width: 48,
+                  height: 48,
+                  margin: "0 auto var(--space-3)",
+                  borderRadius: "50%",
+                  background: "rgba(79,142,247,0.12)",
+                  border: "1px solid rgba(79,142,247,0.25)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Icon name="comment" size={22} />
+              </div>
+              <p style={{ fontSize: "var(--text-sm)", margin: 0, lineHeight: 1.5 }}>
+                {t("messagesEmptyTeammates")}
+              </p>
+            </div>
+          )}
+
+          {directory.map((user) => {
+            const isActive = String(user.id) === String(selectedId);
+            const color = avatarColorFor(user.id);
             return (
               <button
-                key={thread.id}
+                key={user.id}
                 type="button"
-                onClick={() => setActiveId(thread.id)}
+                onClick={() => setSelectedId(user.id)}
                 style={{
                   width: "100%",
                   background: isActive
@@ -91,7 +242,7 @@ export default function MessagesPage() {
                   cursor: "pointer",
                   textAlign: "left",
                   display: "flex",
-                  alignItems: "center",
+                  alignItems: "flex-start",
                   gap: "var(--space-3)",
                   transition: "all var(--transition-fast)",
                 }}
@@ -102,15 +253,13 @@ export default function MessagesPage() {
                     width: 36,
                     height: 36,
                     fontSize: "0.65rem",
-                    background: thread.avatarColor
-                      ? `linear-gradient(135deg, ${thread.avatarColor}, ${thread.avatarColor}99)`
-                      : undefined,
+                    background: `linear-gradient(135deg, ${color}, ${color}99)`,
                     flexShrink: 0,
                   }}
                 >
-                  {thread.avatarInitials}
+                  {makeInitials(user.name)}
                 </div>
-                <div style={{ overflow: "hidden" }}>
+                <div style={{ overflow: "hidden", minWidth: 0 }}>
                   <div
                     style={{
                       fontSize: "var(--text-sm)",
@@ -121,10 +270,10 @@ export default function MessagesPage() {
                       textOverflow: "ellipsis",
                     }}
                   >
-                    {thread.name}
+                    {user.name}
                   </div>
                   <div style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)", marginTop: 2 }}>
-                    {thread.role}
+                    {getDepartmentName(user.departmentId)}
                   </div>
                 </div>
               </button>
@@ -132,8 +281,7 @@ export default function MessagesPage() {
           })}
         </div>
 
-        {/* Chat pane */}
-        {active && (
+        {selected ? (
           <div
             style={{
               background: "rgba(255,255,255,0.03)",
@@ -142,9 +290,9 @@ export default function MessagesPage() {
               display: "flex",
               flexDirection: "column",
               overflow: "hidden",
+              minHeight: 320,
             }}
           >
-            {/* Chat header */}
             <div
               style={{
                 padding: "var(--space-4) var(--space-5)",
@@ -158,26 +306,31 @@ export default function MessagesPage() {
               <div
                 className="ds-avatar"
                 style={{
-                  width: 36, height: 36, fontSize: "0.65rem",
-                  background: active.avatarColor
-                    ? `linear-gradient(135deg, ${active.avatarColor}, ${active.avatarColor}99)`
-                    : undefined,
+                  width: 36,
+                  height: 36,
+                  fontSize: "0.65rem",
+                  background: `linear-gradient(135deg, ${peerColor}, ${peerColor}99)`,
                   flexShrink: 0,
                 }}
               >
-                {active.avatarInitials}
+                {makeInitials(selected.name)}
               </div>
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <div style={{ fontWeight: 700, fontSize: "var(--text-sm)", color: "var(--color-text-primary)" }}>
-                  {active.name}
+                  {selected.name}
                 </div>
-                <div style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)" }}>
-                  {active.role}
+                <div style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)", marginTop: 2 }}>
+                  {getDepartmentName(selected.departmentId)}
                 </div>
               </div>
             </div>
 
-            {/* Messages */}
+            {conversationError && (
+              <div className="ds-alert ds-alert-error" style={{ margin: "var(--space-3) var(--space-4) 0" }}>
+                {conversationError}
+              </div>
+            )}
+
             <div
               style={{
                 flex: 1,
@@ -190,39 +343,48 @@ export default function MessagesPage() {
                 maxHeight: 380,
               }}
             >
-              {active.messages.map((m) => {
-                const isMe = m.from === "me";
-                return (
-                  <div
-                    key={m.id}
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: isMe ? "flex-end" : "flex-start",
-                    }}
-                  >
-                    <div className={`msg-bubble ${isMe ? "msg-bubble-me" : "msg-bubble-other"}`}>
-                      {m.body}
-                    </div>
-                    <span
+              {loadingConversation ? (
+                <p className="ds-body-sm" style={{ color: "var(--color-text-muted)", margin: 0 }}>
+                  {t("messagesLoadingThread")}
+                </p>
+              ) : messages.length === 0 ? (
+                <p className="ds-body-sm" style={{ color: "var(--color-text-muted)", margin: 0 }}>
+                  {t("messagesEmptyThread")}
+                </p>
+              ) : (
+                messages.map((m) => {
+                  const isMe = String(m.senderId) === meId;
+                  return (
+                    <div
+                      key={m.id}
                       style={{
-                        fontSize: "0.65rem",
-                        color: "var(--color-text-muted)",
-                        marginTop: 4,
-                        paddingInline: "var(--space-2)",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: isMe ? "flex-end" : "flex-start",
                       }}
                     >
-                      {isMe ? (currentUser?.name?.split(" ")[0] ?? "You") : active.name.split(" ")[0]}
-                      {" · "}
-                      {formatTime(m.at)}
-                    </span>
-                  </div>
-                );
-              })}
+                      <div className={`msg-bubble ${isMe ? "msg-bubble-me" : "msg-bubble-other"}`}>
+                        {m.content}
+                      </div>
+                      <span
+                        style={{
+                          fontSize: "0.65rem",
+                          color: "var(--color-text-muted)",
+                          marginTop: 4,
+                          paddingInline: "var(--space-2)",
+                        }}
+                      >
+                        {isMe ? (currentUser?.name?.split(" ")[0] ?? t("messagesYou")) : selected.name.split(" ")[0]}
+                        {" · "}
+                        {formatTime(m.createdAt)}
+                      </span>
+                    </div>
+                  );
+                })
+              )}
               <div ref={bottomRef} />
             </div>
 
-            {/* Input */}
             <div
               style={{
                 padding: "var(--space-3) var(--space-4)",
@@ -241,26 +403,47 @@ export default function MessagesPage() {
                 onKeyDown={handleKey}
                 placeholder={t("messagesPlaceholder")}
                 style={{ minHeight: 0, flex: 1, resize: "none" }}
+                disabled={sending || loadingConversation}
               />
               <button
                 type="button"
                 onClick={handleSend}
-                disabled={!draft.trim()}
+                disabled={!draft.trim() || sending || loadingConversation}
                 className="ds-btn ds-btn-primary"
                 style={{ padding: "0.6rem 0.9rem", flexShrink: 0 }}
-                aria-label="Send"
+                aria-label={t("messagesSendAria")}
               >
                 <Icon name="send" size={16} />
               </button>
             </div>
           </div>
+        ) : (
+          <div
+            style={{
+              background: "rgba(255,255,255,0.03)",
+              border: "1px solid var(--color-border)",
+              borderRadius: "var(--radius-xl)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "var(--space-8)",
+              minHeight: 320,
+            }}
+          >
+            <p className="ds-body-sm" style={{ textAlign: "center", maxWidth: 360, margin: 0 }}>
+              {loadStatus === "loading"
+                ? t("messagesLoadingConversations")
+                : t("messagesEmptyTeammates")}
+            </p>
+          </div>
         )}
       </div>
 
-      {/* Mobile notice */}
       <style>{`
-        @media (max-width: 580px) {
-          .messages-grid { grid-template-columns: 1fr !important; }
+        @media (max-width: 720px) {
+          .messages-grid {
+            grid-template-columns: 1fr !important;
+          }
         }
       `}</style>
     </AppShell>

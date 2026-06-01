@@ -4,6 +4,7 @@ import SocratixLogo from "../components/ds/SocratixLogo";
 import Icon from "../components/ds/Icon";
 import { categories, departments } from "../data/mockData";
 import { useSocratixStore } from "../data/SocratixStoreProvider";
+import { useTranslation } from "../i18n/useTranslation";
 
 function Field({ id, label, children }) {
   return (
@@ -16,7 +17,8 @@ function Field({ id, label, children }) {
 
 export default function SignUpPage() {
   const navigate = useNavigate();
-  const { signUp, isAuthenticated, t } = useSocratixStore();
+  const { signUp, isAuthenticated } = useSocratixStore();
+  const { t } = useTranslation();
 
   const [name, setName]           = useState("");
   const [email, setEmail]         = useState("");
@@ -24,7 +26,7 @@ export default function SignUpPage() {
   const [confirm, setConfirm]     = useState("");
   const [showPass, setShowPass]   = useState(false);
   const [deptId, setDeptId]       = useState("dept-rd");
-  const [interests, setInterests] = useState(new Set(["cat-product", "cat-efficiency"]));
+  const [interests, setInterests] = useState(new Set());
   const [error, setError]         = useState("");
   const [loading, setLoading]     = useState(false);
 

@@ -1,21 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.encoders import jsonable_encoder
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
+from fastapi.encoders import jsonable_encoder
 
-from app.config import PASSWORD_RESET_EXPOSE_TOKEN
 from app.database import get_db
 from app.models.user import User
 from app.schemas.auth import (
     AuthResponse,
-    ForgotPasswordRequest,
-    ForgotPasswordResponse,
-    ResetPasswordRequest,
     UserLogin,
+    UserProfileUpdate,
     UserRegister,
     UserResponse,
 )
 from app.services.auth_service import auth_service, get_current_user
+from app.services.avatar_service import avatar_service, ensure_avatar_dir
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -54,41 +52,38 @@ def login(
     }
 
 
-@router.post("/forgot-password", response_model=ForgotPasswordResponse)
-def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db)):
-    user = auth_service.get_user_by_email(db, auth_service.normalize_email(payload.email))
-    generic = {
-        "message": "If this email is registered, you will receive reset instructions.",
-        "resetToken": None,
-    }
-    if not user:
-        return generic
-
-    token = auth_service.issue_password_reset_token(db, user)
-    if PASSWORD_RESET_EXPOSE_TOKEN:
-        return {
-            "message": "Use the reset token below to set a new password (development mode).",
-            "resetToken": token,
-        }
-    return generic
-
-
-@router.post("/reset-password")
-def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db)):
-    ok = auth_service.reset_password_with_token(
-        db,
-        payload.email,
-        payload.token,
-        payload.newPassword,
-    )
-    if not ok:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired reset request",
-        )
-    return {"message": "Password updated. You can sign in."}
-
-
 @router.get("/me", response_model=UserResponse)
 def me(current_user: User = Depends(get_current_user)):
     return current_user
+
+
+@router.post("/me/avatar", response_model=UserResponse)
+async def upload_avatar(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    ensure_avatar_dir()
+    return await avatar_service.save_avatar(db, current_user, file)
+
+
+@router.delete("/me/avatar", response_model=UserResponse)
+def remove_avatar(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return avatar_service.remove_avatar(db, current_user)
+
+
+@router.put("/me", response_model=UserResponse)
+def update_me(
+    payload: UserProfileUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not payload.model_dump(exclude_unset=True):
+        raise HTTPException(
+            status_code=400,
+            detail="Provide at least one field to update.",
+        )
+    return auth_service.update_profile(db, current_user, payload)

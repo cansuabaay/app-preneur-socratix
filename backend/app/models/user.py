@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, String
+from sqlalchemy import DateTime, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -16,5 +16,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     passwordHash: Mapped[str] = mapped_column(String(255), nullable=False)
     departmentId: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    avatarUrl: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    bio: Mapped[str | None] = mapped_column(Text, nullable=True)
     role: Mapped[str] = mapped_column(String(50), nullable=False, default="employee")
     createdAt: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)

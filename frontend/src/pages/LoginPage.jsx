@@ -3,8 +3,9 @@ import { Link, Navigate, useNavigate } from "react-router-dom";
 import SocratixLogo from "../components/ds/SocratixLogo";
 import Icon from "../components/ds/Icon";
 import { useSocratixStore } from "../data/SocratixStoreProvider";
+import { useTranslation } from "../i18n/useTranslation";
 
-function PasswordInput({ id, label, value, onChange }) {
+function PasswordInput({ id, label, value, onChange, showLabel, hideLabel }) {
   const [show, setShow] = useState(false);
   return (
     <div>
@@ -33,7 +34,7 @@ function PasswordInput({ id, label, value, onChange }) {
             background: "none", border: "none", cursor: "pointer",
             color: "var(--color-text-muted)", padding: 4,
           }}
-          aria-label={show ? "Hide password" : "Show password"}
+          aria-label={show ? hideLabel : showLabel}
         >
           <Icon name={show ? "eyeOff" : "eye"} size={15} />
         </button>
@@ -44,7 +45,8 @@ function PasswordInput({ id, label, value, onChange }) {
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const { login, isAuthenticated, t } = useSocratixStore();
+  const { login, isAuthenticated } = useSocratixStore();
+  const { t } = useTranslation();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -155,6 +157,8 @@ export default function LoginPage() {
               label={t("loginPasswordLabel")}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              showLabel={t("loginShowPassword")}
+              hideLabel={t("loginHidePassword")}
             />
 
             <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "calc(-1 * var(--space-2))" }}>

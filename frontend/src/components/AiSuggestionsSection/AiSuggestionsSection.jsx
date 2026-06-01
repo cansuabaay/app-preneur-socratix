@@ -1,7 +1,9 @@
 import Icon from "../ds/Icon";
+import { useTranslation } from "../../i18n/useTranslation";
 
 export default function AiSuggestionsSection({
   visible,
+  summary,
   improvements,
   similarWarnings,
   onAccept,
@@ -9,6 +11,8 @@ export default function AiSuggestionsSection({
   onAckSimilar,
   onDismissSimilar,
 }) {
+  const { t } = useTranslation();
+
   if (!visible) return null;
 
   const pending = improvements.filter((i) => i.status === "pending");
@@ -26,13 +30,26 @@ export default function AiSuggestionsSection({
           color: "var(--color-text-secondary)",
         }}
       >
-        ✓ All suggestions resolved. Your idea is ready to continue.
+        {t("ai.allResolved")}
       </div>
     );
   }
 
   return (
     <div className="ds-stack">
+      {summary && (
+        <p
+          style={{
+            margin: 0,
+            fontSize: "var(--text-sm)",
+            color: "var(--color-text-secondary)",
+            lineHeight: "var(--leading-relaxed)",
+          }}
+        >
+          {summary}
+        </p>
+      )}
+
       {pending.length > 0 && (
         <section className="ds-stack">
           <div className="ds-row" style={{ gap: "var(--space-3)" }}>
@@ -45,7 +62,7 @@ export default function AiSuggestionsSection({
                 color: "var(--color-text-primary)",
               }}
             >
-              AI improvement suggestions
+              {t("ai.suggestionsTitle")}
             </h3>
           </div>
 
@@ -75,14 +92,14 @@ export default function AiSuggestionsSection({
                   className="ds-btn ds-btn-primary ds-btn-sm"
                   onClick={() => onAccept(s.id)}
                 >
-                  Accept
+                  {t("ai.accept")}
                 </button>
                 <button
                   type="button"
                   className="ds-btn ds-btn-ghost ds-btn-sm"
                   onClick={() => onDismiss(s.id)}
                 >
-                  Dismiss
+                  {t("ai.dismiss")}
                 </button>
               </div>
             </div>
@@ -100,7 +117,7 @@ export default function AiSuggestionsSection({
               color: "var(--color-text-primary)",
             }}
           >
-            Similar idea warnings
+            {t("ai.similarTitle")}
           </h3>
 
           {visibleWarnings.map((w) => (
@@ -113,7 +130,9 @@ export default function AiSuggestionsSection({
                 padding: "var(--space-4) var(--space-5)",
               }}
             >
-              <span className="ds-badge ds-badge-warning">{w.title}</span>
+              <span className="ds-badge ds-badge-warning">
+                {w.title || t("ai.similarDefaultTitle")}
+              </span>
               <p
                 style={{
                   margin: "var(--space-3) 0 0",
@@ -130,14 +149,14 @@ export default function AiSuggestionsSection({
                   className="ds-btn ds-btn-secondary ds-btn-sm"
                   onClick={() => onAckSimilar(w.id)}
                 >
-                  Acknowledge
+                  {t("ai.acknowledge")}
                 </button>
                 <button
                   type="button"
                   className="ds-btn ds-btn-ghost ds-btn-sm"
                   onClick={() => onDismissSimilar(w.id)}
                 >
-                  Dismiss
+                  {t("ai.dismiss")}
                 </button>
               </div>
             </div>

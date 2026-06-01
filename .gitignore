@@ -10,3 +10,5 @@ build/
 .DS_Store
 .env
 ios/
+backend/uploads/avatars/*
+!backend/uploads/avatars/.gitkeep

@@ -4,13 +4,9 @@ import AppShell from "../components/layout/AppShell";
 import Icon from "../components/ds/Icon";
 import { getCategoryLabel, getDepartmentName, getUserById } from "../data/mockData";
 import { useSocratixStore } from "../data/SocratixStoreProvider";
-
-const STATUS_INFO = {
-  draft:           { label: "Draft",            cls: "ds-badge-warning" },
-  ai_enhanced:     { label: "AI Enhanced",      cls: "ds-badge-accent" },
-  devils_advocate: { label: "Devil's Advocate", cls: "ds-badge-purple" },
-  published:       { label: "In Portfolio",     cls: "ds-badge-success" },
-};
+import { useTranslation } from "../i18n/useTranslation";
+import { getIdeaStatusBadge, normalizeProgressStatus } from "../i18n/statusLabels";
+import { analyzeIdeaWithAI } from "../services/api";
 
 const AVATAR_COLORS = ["#4f8ef7", "#6366f1", "#a855f7", "#0d9488", "#f97316", "#ec4899"];
 
@@ -37,37 +33,26 @@ function Avatar({ name, size = 32 }) {
 export default function IdeaDetailPage() {
   const { ideaId } = useParams();
   const navigate = useNavigate();
-  const { getIdeaById, voteIdea, addComment, currentUser, t } = useSocratixStore();
+  const {
+    getIdeaById,
+    voteIdea,
+    addComment,
+    deleteIdea,
+    currentUser,
+    ideaVoters,
+    hasVotedOnIdea,
+  } = useSocratixStore();
+  const { t } = useTranslation();
   const idea = getIdeaById(ideaId);
   const [comment, setComment] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState("");
+  const [aiResult, setAiResult] = useState(null);
 
   const author = useMemo(() => {
     if (!idea) return "";
-    return idea.authorName || getUserById(idea.authorId)?.name || "Team member";
-  }, [idea]);
-
-  const voters = useMemo(() => {
-    if (!idea) return [];
-    const ids = idea.voters || [];
-    return ids.map((vid) => {
-      const sid = String(vid);
-      if (currentUser && sid === String(currentUser.id)) {
-        return { id: sid, name: currentUser.name };
-      }
-      return { id: sid, name: "Colleague" };
-    });
-  }, [idea, currentUser]);
-
-  const extraVoteCount = useMemo(() => {
-    if (!idea) return 0;
-    return Math.max(0, (idea.votes ?? 0) - (idea.voters || []).length);
-  }, [idea]);
-
-  const alreadyVoted = useMemo(() => {
-    if (!idea || !currentUser?.id) return false;
-    const voterIds = (idea.voters || []).map((v) => String(v));
-    return voterIds.includes(String(currentUser.id));
-  }, [idea, currentUser]);
+    return idea.authorName || getUserById(idea.authorId)?.name || t("teamMember");
+  }, [idea, t]);
 
   useEffect(() => {
     if (!idea) navigate("/dashboard", { replace: true });
@@ -75,8 +60,13 @@ export default function IdeaDetailPage() {
 
   if (!idea) return null;
 
-  const badge = STATUS_INFO[idea.progressStatus] || { label: idea.progressStatus || "—", cls: "ds-badge-navy" };
-  const canResumeDevil = idea.progressStatus === "devils_advocate";
+  const badge = getIdeaStatusBadge(idea.progressStatus, t);
+  const isOwner = Boolean(
+    currentUser?.id && String(idea.authorId) === String(currentUser.id)
+  );
+  const canResumeDevil = idea.progressStatus === "draft";
+  const voters = ideaVoters(idea);
+  const alreadyVoted = hasVotedOnIdea(idea);
 
   const handleVote = () => voteIdea(idea.id);
 
@@ -86,16 +76,65 @@ export default function IdeaDetailPage() {
     setComment("");
   };
 
+  const handleDelete = async () => {
+    const confirmed = window.confirm(t("idea.deleteConfirm"));
+    if (!confirmed) return;
+    try {
+      await deleteIdea(idea.id);
+      navigate("/dashboard", { replace: true });
+    } catch (err) {
+      setAiError(err?.message || t("idea.deleteError"));
+    }
+  };
+
+  const handleAiDevilAdvocate = async () => {
+    setAiError("");
+    setAiLoading(true);
+    try {
+      const result = await analyzeIdeaWithAI(idea.id);
+      setAiResult(result);
+    } catch (err) {
+      setAiError(err?.message || t("idea.aiAnalysisError"));
+      setAiResult(null);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   return (
     <AppShell>
       {/* Back nav */}
-      <div className="ds-row">
+      <div className="ds-row" style={{ flexWrap: "wrap", gap: "var(--space-2)" }}>
         <Link to="/dashboard" className="ds-btn ds-btn-ghost ds-btn-sm">
-          ← Feed
+          {t("idea.backFeed")}
         </Link>
+        {isOwner && (
+          <>
+            <Link to={`/ideas/${idea.id}/edit`} className="ds-btn ds-btn-secondary ds-btn-sm">
+              {t("idea.edit")}
+            </Link>
+            <button
+              type="button"
+              className="ds-btn ds-btn-danger ds-btn-sm"
+              onClick={handleDelete}
+            >
+              {t("idea.delete")}
+            </button>
+          </>
+        )}
+        <button
+          type="button"
+          className="ds-btn ds-btn-primary ds-btn-sm"
+          onClick={handleAiDevilAdvocate}
+          disabled={aiLoading}
+          style={{ gap: "var(--space-2)" }}
+        >
+          <Icon name="sparkles" size={15} />
+          {aiLoading ? t("idea.aiAnalyzing") : t("idea.aiDevil")}
+        </button>
         {canResumeDevil && (
           <Link to={`/devil/${idea.id}`} className="ds-btn ds-btn-secondary ds-btn-sm">
-            Open Devil&apos;s Advocate
+            {t("idea.continueDevil")}
           </Link>
         )}
       </div>
@@ -118,7 +157,12 @@ export default function IdeaDetailPage() {
           }}
         >
           <div className="idea-feed-card__top">
-            <span className={`ds-badge ${badge.cls}`}>{badge.label}</span>
+            <div className="ds-row" style={{ gap: "var(--space-2)", flexWrap: "wrap", alignItems: "center" }}>
+              <span className={`ds-badge ${badge.cls}`}>{badge.label}</span>
+              {idea.aiReviewed && normalizeProgressStatus(idea.progressStatus) === "submitted" && (
+                <span className="ds-badge ds-badge-purple">{t("idea.aiReviewedBadge")}</span>
+              )}
+            </div>
             <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)" }}>
               {getCategoryLabel(idea.categoryId)}
             </span>
@@ -139,9 +183,6 @@ export default function IdeaDetailPage() {
               {" · "}
               {getDepartmentName(idea.departmentId)}
             </span>
-            {idea.aiReviewed && (
-              <span className="ds-badge ds-badge-purple">AI reviewed</span>
-            )}
           </div>
         </div>
 
@@ -180,36 +221,31 @@ export default function IdeaDetailPage() {
                 {t("whoVoted")}
               </div>
               {voters.length > 0 ? (
-                <div style={{ display: "flex", gap: -8, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap", alignItems: "center" }}>
                   {voters.map((u) => (
-                    <Avatar key={u.id} name={u.name} size={30} />
-                  ))}
-                  {extraVoteCount > 0 && (
-                    <div
-                      className="ds-avatar"
-                      style={{
-                        width: 30, height: 30, fontSize: "0.6rem",
-                        background: "rgba(255,255,255,0.12)",
-                        border: "2px solid rgba(255,255,255,0.1)",
-                        color: "var(--color-text-secondary)",
-                      }}
+                    <span
+                      key={u.id}
+                      title={u.name}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
                     >
-                      +{extraVoteCount}
-                    </div>
-                  )}
+                      <Avatar name={u.name} size={30} />
+                      <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-secondary)" }}>
+                        {u.name}
+                      </span>
+                    </span>
+                  ))}
                 </div>
               ) : (
                 <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)" }}>
-                  No votes yet — be first.
+                  {t("idea.noVotes")}
                 </span>
               )}
             </div>
 
             <button
               type="button"
-              className={`ds-btn ${alreadyVoted ? "ds-btn-ghost" : "ds-btn-secondary"}`}
+              className={`ds-btn ${alreadyVoted ? "ds-btn-primary" : "ds-btn-secondary"}`}
               onClick={handleVote}
-              disabled={alreadyVoted}
               style={{ gap: "var(--space-2)" }}
             >
               <Icon name="vote" size={16} />
@@ -231,10 +267,95 @@ export default function IdeaDetailPage() {
         </div>
       </div>
 
-      {/* Devil's Advocate responses */}
+      {aiError && (
+        <div className="ds-alert ds-alert-error" style={{ marginTop: "var(--space-4)" }}>
+          {aiError}
+        </div>
+      )}
+
+      {aiResult && (
+        <section
+          className="ds-stack"
+          style={{
+            marginTop: "var(--space-5)",
+            background: "rgba(168,85,247,0.06)",
+            border: "1px solid rgba(168,85,247,0.22)",
+            borderRadius: "var(--radius-xl)",
+            padding: "var(--space-5) var(--space-6)",
+          }}
+        >
+          <div className="ds-row-between" style={{ alignItems: "flex-start", flexWrap: "wrap", gap: "var(--space-3)" }}>
+            <h2 className="ds-heading-3" style={{ margin: 0 }}>
+              {t("idea.aiPanelTitle")}
+            </h2>
+            <span className="ds-badge ds-badge-purple">
+              {t("idea.feasibility", { score: aiResult.feasibilityScore })}
+            </span>
+          </div>
+
+          {aiResult.summary && (
+            <p
+              style={{
+                margin: 0,
+                fontSize: "var(--text-sm)",
+                color: "var(--color-text-secondary)",
+                lineHeight: "var(--leading-relaxed)",
+              }}
+            >
+              {aiResult.summary}
+            </p>
+          )}
+
+          <div>
+            <h3
+              style={{
+                fontSize: "var(--text-xs)",
+                fontWeight: 700,
+                textTransform: "uppercase",
+                letterSpacing: "0.07em",
+                color: "var(--color-text-muted)",
+                margin: "0 0 var(--space-2)",
+              }}
+            >
+              {t("idea.risks")}
+            </h3>
+            <ul style={{ margin: 0, paddingLeft: "var(--space-5)", color: "var(--color-text-secondary)" }}>
+              {(aiResult.risks || []).map((risk, idx) => (
+                <li key={idx} style={{ marginBottom: "var(--space-2)", fontSize: "var(--text-sm)" }}>
+                  {risk}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div>
+            <h3
+              style={{
+                fontSize: "var(--text-xs)",
+                fontWeight: 700,
+                textTransform: "uppercase",
+                letterSpacing: "0.07em",
+                color: "var(--color-text-muted)",
+                margin: "0 0 var(--space-2)",
+              }}
+            >
+              {t("idea.improvements")}
+            </h3>
+            <ul style={{ margin: 0, paddingLeft: "var(--space-5)", color: "var(--color-text-secondary)" }}>
+              {(aiResult.improvementSuggestions || []).map((item, idx) => (
+                <li key={idx} style={{ marginBottom: "var(--space-2)", fontSize: "var(--text-sm)" }}>
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      )}
+
+      {/* AI review responses */}
       {idea.devilAnswers?.some((a) => a?.trim()) && (
         <section className="ds-stack">
-          <h2 className="ds-heading-3">Devil&apos;s Advocate responses</h2>
+          <h2 className="ds-heading-3">{t("idea.aiReviewResponses")}</h2>
           {(idea.devilQuestions || []).map((q, i) => (
             <div
               key={i}
@@ -273,15 +394,14 @@ export default function IdeaDetailPage() {
 
       {idea.devilSkipped && (
         <div className="ds-alert">
-          Devil&apos;s Advocate was skipped. Document risks directly in the description before the
-          steering committee review.
+          {t("idea.aiReviewSkipped")}
         </div>
       )}
 
       {/* Discussion */}
       <section className="ds-stack">
         <h2 className="ds-heading-3">
-          Discussion
+          {t("idea.discussion")}
           {(idea.comments?.length ?? 0) > 0 && (
             <span
               style={{
@@ -300,11 +420,11 @@ export default function IdeaDetailPage() {
         </h2>
 
         {(idea.comments || []).length === 0 ? (
-          <p className="ds-body-sm">No comments yet. Start the thread.</p>
+          <p className="ds-body-sm">{t("idea.noComments")}</p>
         ) : (
           <div className="ds-stack-sm">
             {idea.comments.map((c) => {
-              const who = c.authorName || getUserById(c.authorId)?.name || "Colleague";
+              const who = c.authorName || getUserById(c.authorId)?.name || t("colleague");
               return (
                 <div
                   key={c.id}
@@ -341,14 +461,16 @@ export default function IdeaDetailPage() {
             className="ds-label"
             htmlFor="new-comment"
           >
-            {currentUser ? `Add comment as ${currentUser.name}` : "Add a comment"}
+            {currentUser
+              ? t("idea.addCommentAs", { name: currentUser.name })
+              : t("idea.addComment")}
           </label>
           <textarea
             id="new-comment"
             className="ds-textarea"
             value={comment}
             onChange={(e) => setComment(e.target.value)}
-            placeholder="Ask a clarifying question, offer to pilot, or link to related data."
+            placeholder={t("idea.commentPlaceholder")}
             rows={3}
           />
           <button
@@ -359,7 +481,7 @@ export default function IdeaDetailPage() {
             style={{ marginTop: "var(--space-3)" }}
           >
             <Icon name="comment" size={15} />
-            Post comment
+            {t("idea.postComment")}
           </button>
         </div>
       </section>

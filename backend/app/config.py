@@ -24,3 +24,47 @@ ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
 ]
+
+AI_PROVIDER = os.getenv("AI_PROVIDER", "openai").strip().lower()
+AI_MODEL = os.getenv("AI_MODEL", "gpt-4o-mini").strip()
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").strip()
+OPENROUTER_BASE_URL = os.getenv(
+    "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
+).strip()
+
+
+def get_ai_provider() -> str:
+    return os.getenv("AI_PROVIDER", "openai").strip().lower()
+
+
+def get_ai_model() -> str:
+    return os.getenv("AI_MODEL", "gpt-4o-mini").strip()
+
+
+def get_openai_api_key() -> str:
+    return os.getenv("OPENAI_API_KEY", "").strip()
+
+
+def get_openrouter_api_key() -> str:
+    explicit = os.getenv("OPENROUTER_API_KEY", "").strip()
+    if explicit:
+        return explicit
+    if get_ai_provider() == "openrouter":
+        return get_openai_api_key()
+    return ""
+
+
+def get_ai_api_key() -> str:
+    provider = get_ai_provider()
+    if provider == "openrouter":
+        return get_openrouter_api_key()
+    return get_openai_api_key()
+
+
+def get_ai_base_url() -> str:
+    provider = get_ai_provider()
+    if provider == "openrouter":
+        return os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").strip()
+    return os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").strip()

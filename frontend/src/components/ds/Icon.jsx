@@ -80,16 +80,6 @@ export default function Icon({ name, size = 20, className = "" }) {
         </Svg>
       );
 
-    case "users":
-      return (
-        <Svg size={size} className={className}>
-          <circle cx="9" cy="7" r="3" {...p} />
-          <path d="M3 19c0-3.3 2.7-6 6-6s6 2.7 6 6" {...p} />
-          <circle cx="17" cy="9" r="2.5" {...p} />
-          <path d="M21 19c0-2.2-1.8-4-4-4-.5 0-1 .1-1.4.2" {...p} />
-        </Svg>
-      );
-
     case "mail":
       return (
         <Svg size={size} className={className}>

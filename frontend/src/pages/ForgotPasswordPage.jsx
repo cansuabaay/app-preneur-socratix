@@ -3,11 +3,12 @@ import { Link, useNavigate } from "react-router-dom";
 import SocratixLogo from "../components/ds/SocratixLogo";
 import Icon from "../components/ds/Icon";
 import { useSocratixStore } from "../data/SocratixStoreProvider";
+import { useTranslation } from "../i18n/useTranslation";
 import { authApi } from "../services/api";
 
 export default function ForgotPasswordPage() {
   const navigate = useNavigate();
-  const { t } = useSocratixStore();
+  const { t } = useTranslation();
 
   const [email, setEmail] = useState("");
   const [resetToken, setResetToken] = useState("");

@@ -1,26 +1,22 @@
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-import secrets
-
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from app.config import ACCESS_TOKEN_EXPIRE_MINUTES, ALGORITHM, SECRET_KEY
 from app.database import get_db
-from app.models.password_reset_token import PasswordResetToken
 from app.models.user import User
-from app.schemas.auth import UserLogin, UserRegister
+from app.schemas.auth import UserLogin, UserProfileUpdate, UserRegister
 
 pwd_context = CryptContext(
     schemes=["pbkdf2_sha256"],
     deprecated="auto"
 )
-# HTTP Bearer (paste JWT from /auth/login → accessToken). Clearer for Swagger than OAuth2 flow.
-http_bearer = HTTPBearer(auto_error=True, scheme_name="Bearer")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
 class AuthService:
@@ -85,54 +81,38 @@ class AuthService:
 
         return user
 
-    def issue_password_reset_token(self, db: Session, user: User) -> str:
-        raw = secrets.token_urlsafe(32)
-        expires = datetime.utcnow() + timedelta(hours=1)
+    def update_profile(
+        self, db: Session, user: User, payload: UserProfileUpdate
+    ) -> User:
+        data = payload.model_dump(exclude_unset=True)
+        allowed = {"name", "departmentId", "bio"}
 
-        db.query(PasswordResetToken).filter(PasswordResetToken.userId == user.id).delete(
-            synchronize_session=False
-        )
-        row = PasswordResetToken(userId=user.id, token=raw, expiresAt=expires)
-        db.add(row)
+        for field, value in data.items():
+            if field not in allowed:
+                continue
+            if field == "name" and value is not None:
+                value = value.strip()
+                if not value:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Name cannot be empty.",
+                    )
+            if field == "bio" and value is not None:
+                value = value.strip() or None
+            setattr(user, field, value)
+
         db.commit()
-        return raw
-
-    def reset_password_with_token(
-        self, db: Session, email: str, token: str, new_password: str
-    ) -> bool:
-        user = self.get_user_by_email(db, self.normalize_email(email))
-        if not user:
-            return False
-
-        row = (
-            db.query(PasswordResetToken)
-            .filter(
-                PasswordResetToken.userId == user.id,
-                PasswordResetToken.token == token.strip(),
-            )
-            .first()
-        )
-        if not row:
-            return False
-        if row.expiresAt < datetime.utcnow():
-            db.delete(row)
-            db.commit()
-            return False
-
-        user.passwordHash = self.hash_password(new_password)
-        db.delete(row)
-        db.commit()
-        return True
+        db.refresh(user)
+        return user
 
 
 auth_service = AuthService()
 
 
 def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(http_bearer),
+    token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> User:
-    token = credentials.credentials
     credentials_error = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",

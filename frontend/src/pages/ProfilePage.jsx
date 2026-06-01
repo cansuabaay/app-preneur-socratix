@@ -1,8 +1,13 @@
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
 import Icon from "../components/ds/Icon";
-import { getDepartmentName, getCategoryLabel } from "../data/mockData";
+import ProfileAvatar, { accentColorForInitials } from "../components/profile/ProfileAvatar";
+import { departments, getCategoryLabel, getDepartmentName } from "../data/mockData";
 import { useSocratixStore } from "../data/SocratixStoreProvider";
+import { useTranslation } from "../i18n/useTranslation";
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 
 function Toggle({ id, checked, onChange }) {
   return (
@@ -13,82 +18,256 @@ function Toggle({ id, checked, onChange }) {
   );
 }
 
-const ACCENT_COLORS = ["#4f8ef7", "#6366f1", "#a855f7", "#0d9488", "#f97316"];
+function profileFormFromUser(user) {
+  return {
+    name: user?.name || "",
+    departmentId: user?.departmentId || departments[0]?.id || "",
+    bio: user?.bio || "",
+  };
+}
 
 export default function ProfilePage() {
   const navigate = useNavigate();
-  const { currentUser, userSettings, updateSettings, logout, t, language, setLanguage } = useSocratixStore();
+  const {
+    currentUser,
+    userSettings,
+    updateSettings,
+    updateProfile,
+    uploadAvatar,
+    removeAvatar,
+    logout,
+  } = useSocratixStore();
+  const { t, language, setLanguage } = useTranslation();
+  const fileInputRef = useRef(null);
+
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState(() => profileFormFromUser(currentUser));
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState("");
+  const [pendingAvatarFile, setPendingAvatarFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [removePhoto, setRemovePhoto] = useState(false);
+
+  useEffect(() => {
+    if (currentUser && !editing) {
+      setForm(profileFormFromUser(currentUser));
+      resetPhotoDraft();
+    }
+  }, [currentUser, editing]);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl?.startsWith("blob:")) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
 
   if (!currentUser) return null;
+
+  const dept = getDepartmentName(currentUser.departmentId);
+  const avatarColor = accentColorForInitials(currentUser.avatarInitials);
+  const roleLabel =
+    currentUser.role === "employee" ? t("profile.role") : currentUser.role;
+
+  const resetPhotoDraft = () => {
+    setPendingAvatarFile(null);
+    setRemovePhoto(false);
+    if (previewUrl?.startsWith("blob:")) {
+      URL.revokeObjectURL(previewUrl);
+    }
+    setPreviewUrl(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const displayAvatarUrl = editing
+    ? removePhoto
+      ? null
+      : previewUrl || currentUser.avatarUrl
+    : currentUser.avatarUrl;
+
+  const handleStartEdit = () => {
+    setForm(profileFormFromUser(currentUser));
+    setFormError("");
+    resetPhotoDraft();
+    setEditing(true);
+  };
+
+  const handleCancel = () => {
+    setForm(profileFormFromUser(currentUser));
+    setFormError("");
+    resetPhotoDraft();
+    setEditing(false);
+  };
+
+  const handleFileChange = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      setFormError(t("profile.invalidImageType"));
+      return;
+    }
+    if (file.size > MAX_AVATAR_BYTES) {
+      setFormError(t("profile.imageTooLarge"));
+      return;
+    }
+
+    setFormError("");
+    setRemovePhoto(false);
+    setPendingAvatarFile(file);
+    if (previewUrl?.startsWith("blob:")) {
+      URL.revokeObjectURL(previewUrl);
+    }
+    setPreviewUrl(URL.createObjectURL(file));
+  };
+
+  const handleRemovePhoto = () => {
+    setFormError("");
+    setPendingAvatarFile(null);
+    setRemovePhoto(true);
+    if (previewUrl?.startsWith("blob:")) {
+      URL.revokeObjectURL(previewUrl);
+    }
+    setPreviewUrl(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const handleSave = async () => {
+    if (!form.name.trim()) {
+      setFormError(t("profile.nameRequired"));
+      return;
+    }
+    setFormError("");
+    setSaving(true);
+    try {
+      if (pendingAvatarFile) {
+        await uploadAvatar(pendingAvatarFile);
+      } else if (removePhoto && currentUser.avatarUrl) {
+        await removeAvatar();
+      }
+
+      await updateProfile({
+        name: form.name.trim(),
+        departmentId: form.departmentId || null,
+        bio: form.bio.trim() || null,
+      });
+
+      resetPhotoDraft();
+      setEditing(false);
+    } catch (err) {
+      setFormError(err?.message || t("profile.saveError"));
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleLogout = () => {
     logout();
     navigate("/login", { replace: true });
   };
 
-  const dept = getDepartmentName(currentUser.departmentId);
-  const accentIdx =
-    currentUser.avatarInitials
-      .split("")
-      .reduce((a, c) => a + c.charCodeAt(0), 0) % ACCENT_COLORS.length;
-  const avatarColor = ACCENT_COLORS[accentIdx];
+  const hasStoredPhoto = Boolean(currentUser.avatarUrl);
 
   return (
     <AppShell>
-      {/* Hero banner */}
       <div
         style={{
           borderRadius: "var(--radius-2xl)",
           overflow: "hidden",
           position: "relative",
-          padding: "var(--space-8) var(--space-8) var(--space-12)",
+          padding: "var(--space-8) var(--space-8) var(--space-6)",
           background: `linear-gradient(135deg, ${avatarColor}33 0%, rgba(99,102,241,0.18) 100%)`,
           border: "1px solid rgba(255,255,255,0.08)",
         }}
       >
-        {/* Decorative blobs */}
-        <div style={{
-          position: "absolute", top: -40, right: -40, width: 160, height: 160,
-          borderRadius: "50%", background: `${avatarColor}22`, filter: "blur(40px)",
-        }} />
-        <div style={{
-          position: "absolute", bottom: -20, left: -20, width: 120, height: 120,
-          borderRadius: "50%", background: "rgba(99,102,241,0.15)", filter: "blur(30px)",
-        }} />
+        <div
+          style={{
+            position: "absolute",
+            top: -40,
+            right: -40,
+            width: 160,
+            height: 160,
+            borderRadius: "50%",
+            background: `${avatarColor}22`,
+            filter: "blur(40px)",
+          }}
+        />
 
-        <div className="ds-row" style={{ gap: "var(--space-5)", position: "relative" }}>
-          <div
-            className="ds-avatar"
-            style={{
-              width: 72, height: 72,
-              fontSize: "var(--text-xl)",
-              fontWeight: 900,
-              background: `linear-gradient(135deg, ${avatarColor}, ${avatarColor}cc)`,
-              boxShadow: `0 8px 24px ${avatarColor}55`,
-              border: "3px solid rgba(255,255,255,0.15)",
-            }}
-          >
-            {currentUser.avatarInitials}
-          </div>
-          <div>
-            <h1 className="ds-heading-2">{currentUser.name}</h1>
-            <p className="ds-body-sm" style={{ marginTop: "var(--space-1)" }}>
-              {currentUser.title} · {dept}
-            </p>
-            {currentUser.email && (
-              <p style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)", marginTop: "var(--space-1)" }}>
-                {currentUser.email}
+        <div
+          className="ds-row-between"
+          style={{ position: "relative", flexWrap: "wrap", gap: "var(--space-4)" }}
+        >
+          <div className="ds-row" style={{ gap: "var(--space-5)", alignItems: "center" }}>
+            <ProfileAvatar
+              name={editing ? form.name || currentUser.name : currentUser.name}
+              initials={
+                editing
+                  ? makeInitials(form.name || currentUser.name)
+                  : currentUser.avatarInitials
+              }
+              avatarUrl={editing ? displayAvatarUrl : currentUser.avatarUrl}
+              size={72}
+            />
+            <div>
+              <h1 className="ds-heading-2">{editing ? form.name || currentUser.name : currentUser.name}</h1>
+              <p className="ds-body-sm" style={{ marginTop: "var(--space-1)" }}>
+                {roleLabel} · {dept}
               </p>
-            )}
+              {currentUser.email && (
+                <p
+                  style={{
+                    fontSize: "var(--text-xs)",
+                    color: "var(--color-text-muted)",
+                    marginTop: "var(--space-1)",
+                  }}
+                >
+                  {currentUser.email}
+                </p>
+              )}
+            </div>
           </div>
+
+          {!editing && (
+            <button
+              type="button"
+              className="ds-btn ds-btn-secondary"
+              onClick={handleStartEdit}
+              style={{ gap: "var(--space-2)" }}
+            >
+              <Icon name="user" size={16} />
+              {t("profile.editProfile")}
+            </button>
+          )}
         </div>
 
-        {/* Interest chips */}
-        {currentUser.interests?.length > 0 && (
-          <div className="ds-chip-group" style={{ marginTop: "var(--space-5)", position: "relative" }}>
+        {!editing && currentUser.bio && (
+          <p
+            className="ds-body-sm"
+            style={{
+              marginTop: "var(--space-5)",
+              position: "relative",
+              color: "var(--color-text-secondary)",
+              lineHeight: "var(--leading-relaxed)",
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            {currentUser.bio}
+          </p>
+        )}
+
+        {currentUser.interests?.length > 0 && !editing && (
+          <div className="ds-chip-group" style={{ marginTop: "var(--space-4)", position: "relative" }}>
             {currentUser.interests.map((id) => (
-              <span key={id} className="ds-chip ds-chip-selected"
-                style={{ pointerEvents: "none" }}>
+              <span
+                key={id}
+                className="ds-chip ds-chip-selected"
+                style={{ pointerEvents: "none" }}
+              >
                 {getCategoryLabel(id)}
               </span>
             ))}
@@ -96,7 +275,129 @@ export default function ProfilePage() {
         )}
       </div>
 
-      {/* Notifications */}
+      {editing && (
+        <div
+          style={{
+            background: "var(--glass-bg)",
+            border: "1px solid var(--glass-border)",
+            borderRadius: "var(--radius-xl)",
+            padding: "var(--space-6)",
+            backdropFilter: "var(--glass-blur)",
+          }}
+          className="ds-stack"
+        >
+          <h2 className="ds-heading-3" style={{ margin: 0 }}>
+            {t("profile.editProfile")}
+          </h2>
+
+          {formError && <div className="ds-alert ds-alert-error">{formError}</div>}
+
+          <div className="ds-row" style={{ gap: "var(--space-5)", alignItems: "center", flexWrap: "wrap" }}>
+            <ProfileAvatar
+              name={form.name || currentUser.name}
+              initials={makeInitials(form.name || currentUser.name)}
+              avatarUrl={displayAvatarUrl}
+              size={64}
+            />
+            <div className="ds-stack-sm">
+              <span className="ds-label" style={{ margin: 0 }}>
+                {hasStoredPhoto || previewUrl ? t("profile.changePhoto") : t("profile.uploadPhoto")}
+              </span>
+              <input
+                ref={fileInputRef}
+                id="profile-avatar-file"
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/*"
+                style={{ display: "none" }}
+                onChange={handleFileChange}
+              />
+              <div className="ds-row" style={{ flexWrap: "wrap", gap: "var(--space-2)" }}>
+                <button
+                  type="button"
+                  className="ds-btn ds-btn-secondary ds-btn-sm"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {t("profile.uploadPhoto")}
+                </button>
+                {(hasStoredPhoto || previewUrl) && !removePhoto && (
+                  <button
+                    type="button"
+                    className="ds-btn ds-btn-ghost ds-btn-sm"
+                    onClick={handleRemovePhoto}
+                  >
+                    {t("profile.removePhoto")}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="ds-label" htmlFor="profile-name">
+              {t("profile.fullName")}
+            </label>
+            <input
+              id="profile-name"
+              type="text"
+              className="ds-input"
+              value={form.name}
+              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+            />
+          </div>
+
+          <div>
+            <label className="ds-label" htmlFor="profile-dept">
+              {t("profile.department")}
+            </label>
+            <select
+              id="profile-dept"
+              className="ds-select"
+              value={form.departmentId}
+              onChange={(e) => setForm((f) => ({ ...f, departmentId: e.target.value }))}
+            >
+              {departments.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="ds-label" htmlFor="profile-bio">
+              {t("profile.aboutMe")}
+            </label>
+            <textarea
+              id="profile-bio"
+              className="ds-textarea"
+              rows={4}
+              value={form.bio}
+              onChange={(e) => setForm((f) => ({ ...f, bio: e.target.value }))}
+              placeholder={t("profile.aboutMePlaceholder")}
+            />
+          </div>
+
+          <div className="ds-row" style={{ flexWrap: "wrap", gap: "var(--space-3)" }}>
+            <button
+              type="button"
+              className="ds-btn ds-btn-primary"
+              onClick={handleSave}
+              disabled={saving}
+            >
+              {saving ? t("profile.saving") : t("profile.saveChanges")}
+            </button>
+            <button
+              type="button"
+              className="ds-btn ds-btn-ghost"
+              onClick={handleCancel}
+              disabled={saving}
+            >
+              {t("profile.cancel")}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div
         style={{
           background: "var(--glass-bg)",
@@ -112,7 +413,7 @@ export default function ProfilePage() {
         </div>
 
         <div className="ds-toggle-row">
-          <span className="ds-toggle-label">Email me when my ideas receive new comments</span>
+          <span className="ds-toggle-label">{t("profile.emailComments")}</span>
           <Toggle
             id="notif-comments"
             checked={userSettings.emailNotifications}
@@ -120,7 +421,7 @@ export default function ProfilePage() {
           />
         </div>
         <div className="ds-toggle-row">
-          <span className="ds-toggle-label">Weekly digest — top ideas across departments</span>
+          <span className="ds-toggle-label">{t("profile.weeklyDigest")}</span>
           <Toggle
             id="notif-digest"
             checked={userSettings.weeklyDigest}
@@ -128,7 +429,7 @@ export default function ProfilePage() {
           />
         </div>
         <div className="ds-toggle-row">
-          <span className="ds-toggle-label">Alert me when one of my ideas gets a new vote</span>
+          <span className="ds-toggle-label">{t("profile.voteAlert")}</span>
           <Toggle
             id="notif-votes"
             checked={userSettings.ideaVoteAlerts}
@@ -136,7 +437,7 @@ export default function ProfilePage() {
           />
         </div>
         <div className="ds-toggle-row">
-          <span className="ds-toggle-label">Early access to experimental AI prompts</span>
+          <span className="ds-toggle-label">{t("profile.earlyAccess")}</span>
           <Toggle
             id="notif-ai"
             checked={userSettings.experimentalAi}
@@ -145,7 +446,6 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* Logout */}
       <div>
         <div className="ds-row" style={{ marginBottom: "var(--space-4)" }}>
           <button
@@ -165,10 +465,25 @@ export default function ProfilePage() {
           <Icon name="logout" size={16} />
           {t("logout")}
         </button>
-        <p style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)", marginTop: "var(--space-2)" }}>
+        <p
+          style={{
+            fontSize: "var(--text-xs)",
+            color: "var(--color-text-muted)",
+            marginTop: "var(--space-2)",
+          }}
+        >
           {t("profileLogoutHint")}
         </p>
       </div>
     </AppShell>
   );
+}
+
+function makeInitials(name) {
+  return (name || "U")
+    .split(" ")
+    .map((p) => p[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 }

@@ -47,13 +47,23 @@ function getAuthHeader() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+export function resolveAvatarUrl(avatarUrl) {
+  if (!avatarUrl || !String(avatarUrl).trim()) return null;
+  const path = String(avatarUrl).trim();
+  if (path.startsWith("http://") || path.startsWith("https://") || path.startsWith("blob:")) {
+    return path;
+  }
+  const base = API_BASE_URL.replace(/\/$/, "");
+  return path.startsWith("/") ? `${base}${path}` : `${base}/${path}`;
+}
+
 async function request(path, options = {}) {
-  const { skipAuth = false, ...fetchOptions } = options;
+  const { skipAuth = false, isFormData = false, ...fetchOptions } = options;
   const authHeaders = skipAuth ? {} : getAuthHeader();
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
-      "Content-Type": "application/json",
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...authHeaders,
       ...(fetchOptions.headers || {}),
     },
@@ -81,6 +91,12 @@ async function request(path, options = {}) {
 export const ideasApi = {
   list: () => request("/ideas"),
 
+  aiImprove: (payload) =>
+    request("/ideas/ai-improve", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
   get: (ideaId) => request(`/ideas/${ideaId}`),
 
   create: (payload) =>
@@ -100,10 +116,14 @@ export const ideasApi = {
       method: "DELETE",
     }),
 
-  vote: (ideaId, userId) =>
+  vote: (ideaId) =>
     request(`/ideas/${ideaId}/vote`, {
       method: "POST",
-      body: JSON.stringify({ userId }),
+    }),
+
+  generateDevilQuestions: (ideaId) =>
+    request(`/ideas/${ideaId}/devil-questions`, {
+      method: "POST",
     }),
 
   submitDevil: (ideaId, payload) =>
@@ -117,11 +137,43 @@ export const ideasApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+
+  analyzeDevilAdvocate: (ideaId) =>
+    request(`/ideas/${ideaId}/devil-advocate`, {
+      method: "POST",
+    }),
 };
+
+/** POST /ideas/{ideaId}/devil-advocate — AI risk & improvement analysis (backend only). */
+export function analyzeIdeaWithAI(ideaId) {
+  return ideasApi.analyzeDevilAdvocate(ideaId);
+}
+
+/** POST /ideas/ai-improve — AI refinement suggestions for a draft idea (backend only). */
+export function improveIdeaWithAI(payload) {
+  return ideasApi.aiImprove(payload);
+}
 
 export const usersApi = {
   list: () => request("/users"),
 };
+
+export const messagesApi = {
+  listUsers: () => request("/messages/users"),
+
+  getConversation: (userId) => request(`/messages/${userId}`),
+
+  send: (payload) =>
+    request("/messages", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+};
+
+/** @deprecated Prefer usersApi.list — kept for call-site clarity */
+export function getUsers() {
+  return usersApi.list();
+}
 
 export const authApi = {
   register: (payload) =>
@@ -147,6 +199,27 @@ export const authApi = {
   },
 
   me: () => request("/auth/me"),
+
+  updateMe: (payload) =>
+    request("/auth/me", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+
+  uploadAvatar: (file) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request("/auth/me/avatar", {
+      method: "POST",
+      body: form,
+      isFormData: true,
+    });
+  },
+
+  removeAvatar: () =>
+    request("/auth/me/avatar", {
+      method: "DELETE",
+    }),
 
   forgotPassword: (payload) =>
     request("/auth/forgot-password", {

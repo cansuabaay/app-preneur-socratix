@@ -2,18 +2,20 @@ import { useEffect } from "react";
 import { NavLink, Link, useNavigate } from "react-router-dom";
 import SocratixLogo from "../ds/SocratixLogo";
 import Icon from "../ds/Icon";
+import ProfileAvatar from "../profile/ProfileAvatar";
 import { useSocratixStore } from "../../data/SocratixStoreProvider";
+import { useTranslation } from "../../i18n/useTranslation";
 
 const NAV = [
   { to: "/dashboard", icon: "dashboard", labelKey: "dashboard" },
   { to: "/create",    icon: "plus",      labelKey: "createIdea" },
   { to: "/messages",  icon: "comment",   labelKey: "messages" },
-  { to: "/users",     icon: "users",     labelKey: "usersNav" },
   { to: "/profile",   icon: "user",      labelKey: "profile" },
 ];
 
 export default function AppShell({ children }) {
-  const { currentUser, language, setLanguage, t, toasts, removeToast } = useSocratixStore();
+  const { currentUser, toasts, removeToast } = useSocratixStore();
+  const { t, language, setLanguage } = useTranslation();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -74,8 +76,8 @@ export default function AppShell({ children }) {
               border: "1px solid rgba(255,255,255,0.08)",
               color: "var(--color-text-secondary)",
             }}
-            aria-label="Language toggle"
-            title="EN / TR"
+            aria-label={t("languageToggleAria")}
+            title={t("languageToggleTitle")}
           >
             <span style={{ fontWeight: 800, letterSpacing: "0.08em" }}>
               {language.toUpperCase()}
@@ -98,12 +100,17 @@ export default function AppShell({ children }) {
                 flexShrink: 0,
               }}
             >
-              <div
-                className="ds-avatar"
-                style={{ width: 26, height: 26, fontSize: "0.6rem" }}
-              >
-                {currentUser.avatarInitials}
-              </div>
+              <ProfileAvatar
+                name={currentUser.name}
+                initials={currentUser.avatarInitials}
+                avatarUrl={currentUser.avatarUrl}
+                size={26}
+                style={{
+                  fontSize: "0.6rem",
+                  border: "2px solid rgba(255,255,255,0.12)",
+                  boxShadow: "none",
+                }}
+              />
               <span
                 style={{
                   fontSize: "var(--text-xs)",

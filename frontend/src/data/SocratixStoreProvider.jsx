@@ -6,12 +6,9 @@ import {
   useMemo,
   useReducer,
 } from "react";
-import {
-  aiPackages,
-  getCategoryLabel,
-  resolveAiPackageId,
-} from "./mockData";
-import { authApi, ideasApi, persistAccessToken } from "../services/api";
+import { getCategoryLabel } from "./mockData";
+import { translate } from "../i18n/i18n";
+import { authApi, ideasApi, persistAccessToken, resolveAvatarUrl } from "../services/api";
 
 const StoreContext = createContext(null);
 
@@ -20,38 +17,10 @@ const initialCreateDraft = () => ({
   description: "",
   categoryId: "cat-product",
   aiVisible: false,
+  aiSummary: "",
   improvements: [],
   similarWarnings: [],
 });
-
-/** One coach thread per user id so sessions and accounts do not share message state. */
-function createCoachWelcomeThreads(user) {
-  const uid = user?.id != null ? String(user.id) : "session";
-  const now = Date.now();
-  return [
-    {
-      id: `t-coach-${uid}`,
-      name: "Socratix Innovation Coach",
-      role: "AI guide",
-      avatarInitials: "SC",
-      avatarColor: "#6366f1",
-      messages: [
-        {
-          id: `m-${uid}-welcome-1`,
-          from: "coach",
-          body: "Welcome to your Socratix workspace! Share one idea this week and I'll help you stress-test it with the Devil's Advocate framework.",
-          at: new Date(now - 3600_000 * 2).toISOString(),
-        },
-        {
-          id: `m-${uid}-welcome-2`,
-          from: "coach",
-          body: "When you're ready, hit 'Create Idea' on the dashboard. I'll flag similar initiatives and help sharpen the framing before it reaches the steering committee.",
-          at: new Date(now - 3600_000).toISOString(),
-        },
-      ],
-    },
-  ];
-}
 
 function readStoredLanguage() {
   try {
@@ -62,6 +31,48 @@ function readStoredLanguage() {
   }
 }
 
+const SETTINGS_KEY_PREFIX = "socratix_settings_";
+
+const defaultUserSettings = () => ({
+  emailNotifications: true,
+  weeklyDigest: true,
+  experimentalAi: false,
+  ideaVoteAlerts: true,
+});
+
+function readUserSettings(userId) {
+  const defaults = defaultUserSettings();
+  if (!userId) return defaults;
+  try {
+    const raw = localStorage.getItem(`${SETTINGS_KEY_PREFIX}${userId}`);
+    if (!raw) return defaults;
+    return { ...defaults, ...JSON.parse(raw) };
+  } catch {
+    return defaults;
+  }
+}
+
+function persistUserSettings(userId, settings) {
+  if (!userId) return;
+  try {
+    localStorage.setItem(`${SETTINGS_KEY_PREFIX}${userId}`, JSON.stringify(settings));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function normalizeApiUser(user) {
+  const name = user?.name || "";
+  return {
+    ...user,
+    id: user?.id != null ? String(user.id) : "",
+    avatarInitials: makeInitials(name || "User"),
+    avatarUrl: resolveAvatarUrl(user?.avatarUrl),
+    bio: user?.bio?.trim() || "",
+    interests: Array.isArray(user?.interests) ? user.interests : [],
+  };
+}
+
 const initialState = {
   isAuthenticated: false,
   language: readStoredLanguage(),
@@ -69,15 +80,9 @@ const initialState = {
   currentUser: null,
   ideas: [],
   createDraft: initialCreateDraft(),
-  messageThreads: [],
   apiStatus: "idle",
   apiError: "",
-  userSettings: {
-    emailNotifications: true,
-    weeklyDigest: true,
-    experimentalAi: false,
-    ideaVoteAlerts: true,
-  },
+  userSettings: defaultUserSettings(),
 };
 
 function makeInitials(name) {
@@ -87,187 +92,6 @@ function makeInitials(name) {
     .join("")
     .slice(0, 2)
     .toUpperCase();
-}
-
-const I18N = {
-  en: {
-    login: "Login",
-    signIn: "Sign in",
-    signUp: "Sign Up",
-    createAccount: "Create account",
-    forgotPassword: "Forgot password?",
-    dashboard: "Dashboard",
-    createIdea: "Create Idea",
-    messages: "Messages",
-    profile: "Profile",
-    usersNav: "People",
-    messageUser: "Message",
-    usersSubtitle: "Colleagues registered on Socratix.",
-    usersLoadError: "Could not load the directory.",
-    usersEmpty: "No other colleagues in the directory yet.",
-    vote: "Vote",
-    voted: "Voted",
-    whoVoted: "Who voted",
-    settings: "Settings",
-    logout: "Logout",
-    voteCounted: "Your vote has been counted.",
-    brandTagline: "Corporate innovation platform",
-    loginWelcomeBack: "Welcome back",
-    loginSignInBlurb: "to your innovation workspace.",
-    loginEmailLabel: "Work email",
-    loginPasswordLabel: "Password",
-    loginEmailRequired: "Work email is required.",
-    loginPasswordRequired: "Password is required.",
-    loginInvalidCreds: "Invalid email or password",
-    loginFailed: "Sign in failed",
-    loginNewPrompt: "New to Socratix?",
-    loginFooter: "Sign in uses the Socratix API — use the account you registered.",
-    dashboardTitle: "Innovation feed",
-    dashboardWelcome: "Welcome back, {name}. Here's what's moving.",
-    dashboardWelcomeGuest: "Ideas shaping the future of the organisation.",
-    filterAll: "All ideas",
-    filterDepartment: "My department",
-    filterPopular: "Popular",
-    filterNew: "Newest",
-    emptyFeed: "No ideas in this view yet.",
-    emptyFeedCreate: "Be the first to submit one.",
-    messagesSubtitle: "Discuss ideas and get coaching from your Socratix team.",
-    messagesPlaceholder: "Write a message… (Enter to send)",
-    teamMember: "Team member",
-    statusDraft: "Draft",
-    statusAiEnhanced: "AI Enhanced",
-    statusDevilsAdvocate: "Devil's Advocate",
-    statusPublished: "In Portfolio",
-    forgotTitle: "Reset password",
-    forgotSubtitle:
-      "Enter your work email. If the account exists, you will get a reset token (shown here in development when the server allows it).",
-    forgotEmailLabel: "Work email",
-    forgotSend: "Send reset link",
-    forgotBack: "← Back to sign in",
-    forgotTokenLabel: "Reset token",
-    forgotTokenHelp: "Paste the token returned by the server after the previous step.",
-    forgotNewPassword: "New password",
-    forgotConfirmPassword: "Confirm password",
-    forgotSetPassword: "Update password",
-    forgotStep2Title: "Choose a new password",
-    forgotStep2Next: "Enter the token, then your new password.",
-    forgotSuccessTitle: "Password updated",
-    forgotSuccessBody: "You can sign in with your new password.",
-    forgotGenericSent: "If this email is registered, follow the instructions you received.",
-    forgotErrWeak: "Use at least 6 characters.",
-    forgotErrMismatch: "Passwords do not match.",
-    forgotErrRequest: "Could not start reset. Try again.",
-    forgotErrReset: "Reset failed. Check token and try again.",
-    profileLogoutHint: "All session state will be cleared.",
-    signUpWorkspaceTitle: "Create your workspace",
-    signUpWorkspaceSubtitle: "Set up your innovation profile — takes 30 seconds.",
-    signUpFullName: "Full name",
-    signUpPassword: "Password",
-    signUpConfirmPassword: "Confirm password",
-    signUpDepartment: "Department",
-    signUpThemes: "Innovation themes you care about",
-    signUpPasswordHint: "≥ 6 characters",
-    signUpRepeatPassword: "Repeat password",
-    signUpNameRequired: "Full name is required.",
-    signUpEmailRequired: "Work email is required.",
-    signUpPasswordTooShort: "Use at least 6 characters for your password.",
-    signUpPasswordMismatch: "Passwords do not match.",
-    signUpThemesRequired: "Select at least one innovation theme.",
-    signUpFailed: "Registration failed",
-    signUpAlreadyHave: "Already have access?",
-    loadingEllipsis: "…",
-  },
-  tr: {
-    login: "Giriş",
-    signIn: "Giriş yap",
-    signUp: "Kayıt ol",
-    createAccount: "Hesap oluştur",
-    forgotPassword: "Şifremi unuttum",
-    dashboard: "Pano",
-    createIdea: "Fikir oluştur",
-    messages: "Mesajlar",
-    profile: "Profil",
-    usersNav: "Kişiler",
-    messageUser: "Mesaj",
-    usersSubtitle: "Socratix'e kayıtlı çalışma arkadaşların.",
-    usersLoadError: "Dizin yüklenemedi.",
-    usersEmpty: "Dizinde henüz başka çalışma arkadaşın yok.",
-    vote: "Oy ver",
-    voted: "Oy verdin",
-    whoVoted: "Kim oy verdi",
-    settings: "Ayarlar",
-    logout: "Çıkış yap",
-    voteCounted: "Oyun kaydedildi.",
-    brandTagline: "Kurumsal inovasyon platformu",
-    loginWelcomeBack: "Tekrar hoş geldin",
-    loginSignInBlurb: "inovasyon çalışma alanına.",
-    loginEmailLabel: "İş e-postası",
-    loginPasswordLabel: "Şifre",
-    loginEmailRequired: "İş e-postası gerekli.",
-    loginPasswordRequired: "Şifre gerekli.",
-    loginInvalidCreds: "E-posta veya şifre hatalı",
-    loginFailed: "Giriş başarısız",
-    loginNewPrompt: "Socratix'te yeni misin?",
-    loginFooter: "Giriş Socratix API ile yapılır — kayıtlı hesabını kullan.",
-    dashboardTitle: "İnovasyon akışı",
-    dashboardWelcome: "Tekrar hoş geldin, {name}. İşte nabız.",
-    dashboardWelcomeGuest: "Kuruluşun geleceğini şekillendiren fikirler.",
-    filterAll: "Tüm fikirler",
-    filterDepartment: "Departmanım",
-    filterPopular: "Popüler",
-    filterNew: "En yeni",
-    emptyFeed: "Bu görünümde henüz fikir yok.",
-    emptyFeedCreate: "İlk gönderen sen ol.",
-    messagesSubtitle: "Fikirleri tartış ve Socratix ekibinden koçluk al.",
-    messagesPlaceholder: "Mesaj yaz… (Gönder: Enter)",
-    teamMember: "Ekip üyesi",
-    statusDraft: "Taslak",
-    statusAiEnhanced: "AI ile güçlendirildi",
-    statusDevilsAdvocate: "Şeytanın avukatı",
-    statusPublished: "Portföyde",
-    forgotTitle: "Şifre sıfırlama",
-    forgotSubtitle:
-      "İş e-postanı gir. Hesap varsa sıfırlama anahtarı alırsın (geliştirme ortamında sunucu izin veriyorsa burada gösterilir).",
-    forgotEmailLabel: "İş e-postası",
-    forgotSend: "Sıfırlama bağlantısı gönder",
-    forgotBack: "← Girişe dön",
-    forgotTokenLabel: "Sıfırlama anahtarı",
-    forgotTokenHelp: "Önceki adımda sunucunun döndürdüğü anahtarı yapıştır.",
-    forgotNewPassword: "Yeni şifre",
-    forgotConfirmPassword: "Şifreyi doğrula",
-    forgotSetPassword: "Şifreyi güncelle",
-    forgotStep2Title: "Yeni şifre seç",
-    forgotStep2Next: "Anahtarı gir, ardından yeni şifreni yaz.",
-    forgotSuccessTitle: "Şifre güncellendi",
-    forgotSuccessBody: "Yeni şifrenle giriş yapabilirsin.",
-    forgotGenericSent: "Bu e-posta kayıtlıysa gelen talimatları izle.",
-    forgotErrWeak: "En az 6 karakter kullan.",
-    forgotErrMismatch: "Şifreler eşleşmiyor.",
-    forgotErrRequest: "Sıfırlama başlatılamadı. Tekrar dene.",
-    forgotErrReset: "Sıfırlama başarısız. Anahtarı kontrol et.",
-    profileLogoutHint: "Oturum durumu temizlenir.",
-    signUpWorkspaceTitle: "Çalışma alanını oluştur",
-    signUpWorkspaceSubtitle: "İnovasyon profilini ayarla — yaklaşık 30 saniye.",
-    signUpFullName: "Ad soyad",
-    signUpPassword: "Şifre",
-    signUpConfirmPassword: "Şifreyi doğrula",
-    signUpDepartment: "Departman",
-    signUpThemes: "İlgilendiğin inovasyon temaları",
-    signUpPasswordHint: "≥ 6 karakter",
-    signUpRepeatPassword: "Şifreyi tekrarla",
-    signUpNameRequired: "Ad soyad gerekli.",
-    signUpEmailRequired: "İş e-postası gerekli.",
-    signUpPasswordTooShort: "Şifre en az 6 karakter olmalı.",
-    signUpPasswordMismatch: "Şifreler eşleşmiyor.",
-    signUpThemesRequired: "En az bir tema seç.",
-    signUpFailed: "Kayıt başarısız",
-    signUpAlreadyHave: "Zaten hesabın var mı?",
-    loadingEllipsis: "…",
-  },
-};
-
-function t(lang, key) {
-  return I18N[lang]?.[key] ?? I18N.en[key] ?? key;
 }
 
 function reducer(state, action) {
@@ -287,15 +111,24 @@ function reducer(state, action) {
 
     case "UPSERT_IDEA": {
       const idea = action.payload;
-      const exists = state.ideas.some((i) => i.id === idea.id);
+      const ideaKey = String(idea.id);
+      const exists = state.ideas.some((i) => String(i.id) === ideaKey);
 
       return {
         ...state,
         ideas: exists
-          ? state.ideas.map((i) => (i.id === idea.id ? idea : i))
+          ? state.ideas.map((i) => (String(i.id) === ideaKey ? idea : i))
           : [idea, ...state.ideas],
       };
     }
+
+    case "REMOVE_IDEA":
+      return {
+        ...state,
+        ideas: state.ideas.filter(
+          (i) => String(i.id) !== String(action.payload.ideaId)
+        ),
+      };
 
     case "SET_LANGUAGE":
       return { ...state, language: action.payload === "tr" ? "tr" : "en" };
@@ -311,24 +144,22 @@ function reducer(state, action) {
 
     case "LOGIN":
     case "SIGN_UP": {
-      const { user, messageThreads: nextThreads } = action.payload;
-      const name = user?.name || "";
-      const id = user?.id != null ? String(user.id) : "";
+      const { user } = action.payload;
+      const normalized = normalizeApiUser(user);
 
       return {
         ...state,
         isAuthenticated: true,
-        currentUser: {
-          ...user,
-          id,
-          avatarInitials: makeInitials(name || "User"),
-          title:
-            user?.role === "employee"
-              ? "Innovation Contributor"
-              : user?.role || "Member",
-          interests: Array.isArray(user?.interests) ? user.interests : [],
-        },
-        messageThreads: Array.isArray(nextThreads) ? nextThreads : [],
+        currentUser: normalized,
+        userSettings: readUserSettings(normalized.id),
+      };
+    }
+
+    case "UPDATE_USER": {
+      const normalized = normalizeApiUser(action.payload.user);
+      return {
+        ...state,
+        currentUser: normalized,
       };
     }
 
@@ -336,14 +167,18 @@ function reducer(state, action) {
       return {
         ...initialState,
         language: readStoredLanguage(),
-        ideas: state.ideas,
+        ideas: [],
+        userSettings: defaultUserSettings(),
       };
 
-    case "UPDATE_SETTINGS":
+    case "UPDATE_SETTINGS": {
+      const next = { ...state.userSettings, ...action.payload };
+      persistUserSettings(state.currentUser?.id, next);
       return {
         ...state,
-        userSettings: { ...state.userSettings, ...action.payload },
+        userSettings: next,
       };
+    }
 
     case "UPDATE_CREATE_DRAFT":
       return {
@@ -354,22 +189,25 @@ function reducer(state, action) {
     case "RESET_CREATE_DRAFT":
       return { ...state, createDraft: initialCreateDraft() };
 
-    case "AI_IMPROVE": {
-      const { categoryId } = state.createDraft;
-      const pkgId = resolveAiPackageId(categoryId);
-      const pkg = aiPackages[pkgId] || aiPackages["pkg-product"];
+    case "SET_AI_IMPROVE": {
+      const { improvements, similarWarnings, summary } = action.payload;
+      const stamp = Date.now();
 
       return {
         ...state,
         createDraft: {
           ...state.createDraft,
           aiVisible: true,
-          improvements: pkg.improvements.map((s) => ({
-            ...s,
+          aiSummary: summary || "",
+          improvements: (improvements || []).map((text, index) => ({
+            id: `ai-${stamp}-${index}`,
+            text: String(text),
             status: "pending",
           })),
-          similarWarnings: pkg.similarWarnings.map((w) => ({
-            ...w,
+          similarWarnings: (similarWarnings || []).map((warning, index) => ({
+            id: `sim-${stamp}-${index}`,
+            title: warning.title || "",
+            detail: warning.detail || "",
             dismissed: false,
             acknowledged: false,
           })),
@@ -452,18 +290,30 @@ function reducer(state, action) {
       };
     }
 
-    case "SUBMIT_DEVIL": {
-      const { ideaId, answers, skipped } = action.payload;
-
+    case "SET_DEVIL_QUESTIONS": {
+      const { ideaId, questions } = action.payload;
       return {
         ...state,
         ideas: state.ideas.map((idea) =>
-          idea.id === ideaId
+          String(idea.id) === String(ideaId)
+            ? { ...idea, devilQuestions: questions }
+            : idea
+        ),
+      };
+    }
+
+    case "SUBMIT_DEVIL": {
+      const { ideaId, answers, skipped } = action.payload;
+      return {
+        ...state,
+        ideas: state.ideas.map((idea) =>
+          String(idea.id) === String(ideaId)
             ? {
                 ...idea,
                 devilAnswers: answers,
                 devilSkipped: skipped,
-                progressStatus: "published",
+                progressStatus: "submitted",
+                aiReviewed: !skipped,
               }
             : idea
         ),
@@ -492,83 +342,18 @@ function reducer(state, action) {
       };
     }
 
-    case "VOTE_IDEA": {
-      const { ideaId } = action.payload;
-      const user = state.currentUser;
-      let didVote = false;
-
-      const nextIdeas = state.ideas.map((idea) => {
-        if (idea.id !== ideaId) return idea;
-
-        const alreadyVoted = (idea.voters || []).includes(user?.id);
-        if (alreadyVoted) return idea;
-
-        didVote = true;
-
-        return {
-          ...idea,
-          votes: (idea.votes || 0) + 1,
-          voters: [...(idea.voters || []), ...(user ? [user.id] : [])],
-        };
-      });
+    case "APPLY_VOTE": {
+      const { ideaId, votes, voters, voted } = action.payload;
+      const ideaKey = String(ideaId);
 
       return {
         ...state,
-        ideas: nextIdeas,
-        toasts: didVote
+        ideas: state.ideas.map((idea) =>
+          String(idea.id) === ideaKey ? { ...idea, votes, voters } : idea
+        ),
+        toasts: voted
           ? [...state.toasts, { id: `toast-${Date.now()}`, key: "voteCounted" }]
           : state.toasts,
-      };
-    }
-
-    case "ENSURE_DM_THREAD": {
-      const { peer } = action.payload;
-      const pid = peer?.id != null ? String(peer.id) : "";
-      if (!pid) return state;
-
-      const threadId = `t-peer-${pid}`;
-      if (state.messageThreads.some((th) => th.id === threadId)) return state;
-
-      const peerName = peer.name || "Colleague";
-      const newThread = {
-        id: threadId,
-        name: peerName,
-        role:
-          peer.role === "employee"
-            ? "Team member"
-            : peer.role || "Colleague",
-        avatarInitials: makeInitials(peerName),
-        avatarColor: "#0d9488",
-        messages: [],
-      };
-
-      return {
-        ...state,
-        messageThreads: [...state.messageThreads, newThread],
-      };
-    }
-
-    case "SEND_MESSAGE": {
-      const { threadId, body } = action.payload;
-
-      return {
-        ...state,
-        messageThreads: state.messageThreads.map((thread) =>
-          thread.id === threadId
-            ? {
-                ...thread,
-                messages: [
-                  ...thread.messages,
-                  {
-                    id: `m-${Date.now()}`,
-                    from: "me",
-                    body,
-                    at: new Date().toISOString(),
-                  },
-                ],
-              }
-            : thread
-        ),
       };
     }
 
@@ -582,31 +367,6 @@ export function SocratixStoreProvider({ children }) {
 
   useEffect(() => {
     let active = true;
-
-    ideasApi
-      .list()
-      .then((ideas) => {
-        if (!active) return;
-
-        dispatch({ type: "SET_IDEAS", payload: ideas });
-        dispatch({ type: "SET_API_STATUS", payload: { status: "ready" } });
-      })
-      .catch((error) => {
-        if (!active) return;
-
-        dispatch({
-          type: "SET_API_STATUS",
-          payload: { status: "fallback", error: error.message },
-        });
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
     const token = localStorage.getItem("socratix_token");
     if (!token) return undefined;
 
@@ -616,10 +376,7 @@ export function SocratixStoreProvider({ children }) {
         if (!active) return;
         dispatch({
           type: "LOGIN",
-          payload: {
-            user,
-            messageThreads: createCoachWelcomeThreads(user),
-          },
+          payload: { user },
         });
       })
       .catch(() => {
@@ -651,10 +408,7 @@ export function SocratixStoreProvider({ children }) {
     persistAccessToken(data);
     dispatch({
       type: "LOGIN",
-      payload: {
-        user: data.user,
-        messageThreads: createCoachWelcomeThreads(data.user),
-      },
+      payload: { user: data.user },
     });
   }, []);
 
@@ -669,7 +423,7 @@ export function SocratixStoreProvider({ children }) {
     persistAccessToken(data);
     dispatch({
       type: "SIGN_UP",
-      payload: { user: data.user, messageThreads: [] },
+      payload: { user: data.user },
     });
   }, []);
 
@@ -682,6 +436,28 @@ export function SocratixStoreProvider({ children }) {
     dispatch({ type: "UPDATE_SETTINGS", payload });
   }, []);
 
+  const updateProfile = useCallback(async (payload) => {
+    const user = await authApi.updateMe(payload);
+    dispatch({ type: "UPDATE_USER", payload: { user } });
+    dispatch({
+      type: "ADD_TOAST",
+      payload: { id: `toast-${Date.now()}`, key: "profile.updatedSuccess" },
+    });
+    return user;
+  }, []);
+
+  const uploadAvatar = useCallback(async (file) => {
+    const user = await authApi.uploadAvatar(file);
+    dispatch({ type: "UPDATE_USER", payload: { user } });
+    return user;
+  }, []);
+
+  const removeAvatar = useCallback(async () => {
+    const user = await authApi.removeAvatar();
+    dispatch({ type: "UPDATE_USER", payload: { user } });
+    return user;
+  }, []);
+
   const updateCreateDraft = useCallback((payload) => {
     dispatch({ type: "UPDATE_CREATE_DRAFT", payload });
   }, []);
@@ -690,9 +466,15 @@ export function SocratixStoreProvider({ children }) {
     dispatch({ type: "RESET_CREATE_DRAFT" });
   }, []);
 
-  const runAiImprove = useCallback(() => {
-    dispatch({ type: "AI_IMPROVE" });
-  }, []);
+  const runAiImprove = useCallback(async () => {
+    const { title, description, categoryId } = state.createDraft;
+    const result = await ideasApi.aiImprove({
+      title: title.trim(),
+      description: description.trim(),
+      categoryId,
+    });
+    dispatch({ type: "SET_AI_IMPROVE", payload: result });
+  }, [state.createDraft]);
 
   const acceptSuggestion = useCallback((suggestionId) => {
     dispatch({ type: "ACCEPT_SUGGESTION", payload: { suggestionId } });
@@ -725,12 +507,15 @@ export function SocratixStoreProvider({ children }) {
     }
   }, []);
 
+  useEffect(() => {
+    if (!state.isAuthenticated) return;
+    loadIdeas();
+  }, [state.isAuthenticated, loadIdeas]);
+
   const createIdeaFromDraft = useCallback(async () => {
     if (!state.currentUser) return null;
 
     const draft = state.createDraft;
-    const packageId = resolveAiPackageId(draft.categoryId);
-    const aiPackage = aiPackages[packageId] || aiPackages["pkg-product"];
 
     const fallbackIdea = {
       id: `idea-${Date.now()}`,
@@ -741,14 +526,13 @@ export function SocratixStoreProvider({ children }) {
       authorId: state.currentUser.id,
       authorName: state.currentUser.name,
       votes: 0,
-      progressStatus: "devils_advocate",
-      aiReviewed: Boolean(draft.aiVisible),
+      progressStatus: "draft",
+      aiReviewed: false,
       createdAt: new Date().toISOString(),
       comments: [],
-      devilQuestions: aiPackage.devilQuestions,
+      devilQuestions: [],
       devilAnswers: [],
       devilSkipped: false,
-      aiPackageId: packageId,
       voters: [],
     };
 
@@ -759,7 +543,7 @@ export function SocratixStoreProvider({ children }) {
         payload: { idea: savedIdea },
       });
 
-      return savedIdea.id;
+      return String(savedIdea.id);
     } catch (error) {
       dispatch({
         type: "CREATE_IDEA_FROM_DRAFT",
@@ -770,19 +554,39 @@ export function SocratixStoreProvider({ children }) {
         payload: { status: "fallback", error: error.message },
       });
 
-      return fallbackIdea.id;
+      return String(fallbackIdea.id);
     }
   }, [state.currentUser, state.createDraft]);
 
+  const generateDevilQuestions = useCallback(async (ideaId) => {
+    const data = await ideasApi.generateDevilQuestions(ideaId);
+    dispatch({
+      type: "SET_DEVIL_QUESTIONS",
+      payload: { ideaId, questions: data.questions || [] },
+    });
+    return data.questions || [];
+  }, []);
+
+  const updateIdea = useCallback(async (ideaId, payload) => {
+    const updatedIdea = await ideasApi.update(ideaId, payload);
+    dispatch({ type: "UPSERT_IDEA", payload: updatedIdea });
+    return updatedIdea;
+  }, []);
+
+  const deleteIdea = useCallback(async (ideaId) => {
+    await ideasApi.remove(ideaId);
+    dispatch({ type: "REMOVE_IDEA", payload: { ideaId } });
+  }, []);
+
   const submitDevil = useCallback(
     async (payload) => {
+      const currentIdea = state.ideas.find(
+        (idea) => String(idea.id) === String(payload.ideaId)
+      );
+
       dispatch({ type: "SUBMIT_DEVIL", payload });
 
       try {
-        const currentIdea = state.ideas.find(
-          (idea) => idea.id === payload.ideaId
-        );
-
         const updatedIdea = await ideasApi.submitDevil(payload.ideaId, {
           answers: payload.answers,
           questions: currentIdea?.devilQuestions || [],
@@ -795,6 +599,7 @@ export function SocratixStoreProvider({ children }) {
           type: "SET_API_STATUS",
           payload: { status: "fallback", error: error.message },
         });
+        throw error;
       }
     },
     [state.ideas]
@@ -822,35 +627,34 @@ export function SocratixStoreProvider({ children }) {
     [state.currentUser]
   );
 
-  const voteIdea = useCallback(
-    async (ideaId) => {
-      dispatch({ type: "VOTE_IDEA", payload: { ideaId } });
-
-      try {
-        const updatedIdea = await ideasApi.vote(ideaId, state.currentUser?.id);
-        dispatch({ type: "UPSERT_IDEA", payload: updatedIdea });
-      } catch (error) {
-        dispatch({
-          type: "SET_API_STATUS",
-          payload: { status: "fallback", error: error.message },
-        });
-      }
-    },
-    [state.currentUser]
-  );
-
-  const startDmWithUser = useCallback((peer) => {
-    dispatch({ type: "ENSURE_DM_THREAD", payload: { peer } });
-    const pid = peer?.id != null ? String(peer.id) : "";
-    if (pid) sessionStorage.setItem("socratix_focus_thread", `t-peer-${pid}`);
+  const voteIdea = useCallback(async (ideaId) => {
+    try {
+      const result = await ideasApi.vote(ideaId);
+      dispatch({
+        type: "APPLY_VOTE",
+        payload: {
+          ideaId,
+          votes: result.voteCount,
+          voters: result.voters,
+          voted: result.voted,
+        },
+      });
+    } catch (error) {
+      dispatch({
+        type: "SET_API_STATUS",
+        payload: { status: "fallback", error: error.message },
+      });
+    }
   }, []);
 
-  const sendMessage = useCallback((threadId, body) => {
-    dispatch({ type: "SEND_MESSAGE", payload: { threadId, body } });
+  const openMessagesWithUser = useCallback((peer) => {
+    const pid = peer?.id != null ? String(peer.id) : "";
+    if (pid) sessionStorage.setItem("socratix_messages_peer", pid);
   }, []);
 
   const getIdeaById = useCallback(
-    (id) => state.ideas.find((idea) => idea.id === id),
+    (id) =>
+      state.ideas.find((idea) => id != null && String(idea.id) === String(id)),
     [state.ideas]
   );
 
@@ -888,34 +692,34 @@ export function SocratixStoreProvider({ children }) {
     [state.ideas, state.currentUser]
   );
 
-  const getMockVoters = useCallback(
+  const ideaVoters = useCallback((idea) => {
+    const raw = idea?.voters || [];
+    return raw.map((entry) => {
+      if (typeof entry === "string") {
+        return { id: String(entry), name: "User" };
+      }
+      return {
+        id: String(entry.id),
+        name: entry.name || "User",
+      };
+    });
+  }, []);
+
+  const hasVotedOnIdea = useCallback(
     (idea) => {
-      const ids = idea?.voters || [];
-      return ids.map((vid) => {
-        const sid = String(vid);
-        if (state.currentUser && sid === String(state.currentUser.id)) {
-          return {
-            id: sid,
-            name: state.currentUser.name,
-            avatarInitials: state.currentUser.avatarInitials,
-          };
-        }
-        const compact = sid.replace(/-/g, "");
-        return {
-          id: sid,
-          name: "Colleague",
-          avatarInitials: (compact.slice(0, 2) || "—").toUpperCase(),
-        };
-      });
+      const me = state.currentUser?.id;
+      if (!me || !idea) return false;
+      const meKey = String(me);
+      return ideaVoters(idea).some((v) => String(v.id) === meKey);
     },
-    [state.currentUser]
+    [state.currentUser, ideaVoters]
   );
 
   const value = useMemo(
     () => ({
       ...state,
       dispatch,
-      t: (key) => t(state.language, key),
+      t: (key, vars) => translate(state.language, key, vars),
       setLanguage,
       removeToast,
       login,
@@ -923,6 +727,9 @@ export function SocratixStoreProvider({ children }) {
       logout,
       loadIdeas,
       updateSettings,
+      updateProfile,
+      uploadAvatar,
+      removeAvatar,
       updateCreateDraft,
       resetCreateDraft,
       runAiImprove,
@@ -931,14 +738,17 @@ export function SocratixStoreProvider({ children }) {
       acknowledgeSimilar,
       dismissSimilar,
       createIdeaFromDraft,
+      updateIdea,
+      deleteIdea,
+      generateDevilQuestions,
       submitDevil,
       addComment,
       voteIdea,
-      sendMessage,
-      startDmWithUser,
+      openMessagesWithUser,
       getIdeaById,
       getFilteredIdeas,
-      getMockVoters,
+      ideaVoters,
+      hasVotedOnIdea,
       getCategoryLabel,
     }),
     [
@@ -950,6 +760,9 @@ export function SocratixStoreProvider({ children }) {
       logout,
       loadIdeas,
       updateSettings,
+      updateProfile,
+      uploadAvatar,
+      removeAvatar,
       updateCreateDraft,
       resetCreateDraft,
       runAiImprove,
@@ -958,14 +771,17 @@ export function SocratixStoreProvider({ children }) {
       acknowledgeSimilar,
       dismissSimilar,
       createIdeaFromDraft,
+      updateIdea,
+      deleteIdea,
+      generateDevilQuestions,
       submitDevil,
       addComment,
       voteIdea,
-      sendMessage,
-      startDmWithUser,
+      openMessagesWithUser,
       getIdeaById,
       getFilteredIdeas,
-      getMockVoters,
+      ideaVoters,
+      hasVotedOnIdea,
     ]
   );
 

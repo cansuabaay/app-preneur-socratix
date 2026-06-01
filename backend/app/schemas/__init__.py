@@ -5,7 +5,7 @@ from app.schemas.idea import (
     IdeaCreate,
     IdeaResponse,
     IdeaUpdate,
-    VoteRequest,
+    VoteToggleResponse,
 )
 
 __all__ = [
@@ -18,5 +18,5 @@ __all__ = [
     "IdeaCreate",
     "IdeaResponse",
     "IdeaUpdate",
-    "VoteRequest",
+    "VoteToggleResponse",
 ]

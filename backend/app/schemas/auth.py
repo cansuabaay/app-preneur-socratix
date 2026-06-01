@@ -16,11 +16,19 @@ class UserLogin(BaseModel):
     password: str
 
 
+class UserProfileUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=120)
+    departmentId: str | None = Field(default=None, max_length=100)
+    bio: str | None = Field(default=None, max_length=2000)
+
+
 class UserResponse(BaseModel):
     id: UUID
     name: str
     email: str
     departmentId: str | None = None
+    avatarUrl: str | None = None
+    bio: str | None = None
     role: str
     createdAt: datetime
 
@@ -32,18 +40,3 @@ class AuthResponse(BaseModel):
     accessToken: str
     tokenType: str = "bearer"
     user: UserResponse
-
-
-class ForgotPasswordRequest(BaseModel):
-    email: str = Field(min_length=5, max_length=255)
-
-
-class ForgotPasswordResponse(BaseModel):
-    message: str
-    resetToken: str | None = None
-
-
-class ResetPasswordRequest(BaseModel):
-    email: str = Field(min_length=5, max_length=255)
-    token: str = Field(min_length=8, max_length=500)
-    newPassword: str = Field(min_length=6, max_length=100)
