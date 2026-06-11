@@ -2,7 +2,15 @@
 
 **AI-Powered Corporate Innovation Management Platform**
 
-Socratix is a local development MVP for corporate innovation teams. It is not production-deployed.
+## Live Demo
+
+Frontend Application:  
+http://63.184.229.55
+
+Backend API Documentation:  
+http://63.184.229.55:8000/docs
+
+Socratix is a deployed MVP for corporate innovation teams. It runs with a React frontend, FastAPI backend, PostgreSQL database, and AI-powered innovation workflows.
 
 ## Overview
 
@@ -98,6 +106,7 @@ Provides:
 | Database | PostgreSQL |
 | AI | OpenAI / OpenRouter compatible APIs |
 | Authentication | JWT |
+| Deployment | AWS EC2 + Nginx + systemd |
 
 ## Project Structure
 
@@ -105,7 +114,7 @@ Provides:
 /frontend     React client application
 /backend      FastAPI API, services, and database models
 /prodocs      Product and technical documentation
-/screenshots  UI screenshots for README and demos
+
 ```
 
 ## Environment Setup
