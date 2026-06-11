@@ -1,21 +1,30 @@
 import { Link } from "react-router-dom";
 import Icon from "../ds/Icon";
-import {
-  getCategoryLabel,
-  getDepartmentName,
-  getUserById,
-} from "../../data/mockData";
+import ProfileAvatar from "../profile/ProfileAvatar";
+import { getDepartmentName, getUserById } from "../../data/mockData";
+import { useSocratixStore } from "../../data/SocratixStoreProvider";
 import { useTranslation } from "../../i18n/useTranslation";
-import { getIdeaStatusBadge, normalizeProgressStatus } from "../../i18n/statusLabels";
+import { getIdeaStatusBadge } from "../../i18n/statusLabels";
+import { resolveAvatarUrl } from "../../services/api";
+import { hasAiChallengeCompleted } from "../../utils/reviewAnswers";
+import { hasStrategicAnalysis } from "../../utils/strategicAnalysis";
 
-export default function IdeaFeedCard({ idea }) {
+export default function IdeaFeedCard({ idea, display }) {
+  const { lookupUser } = useSocratixStore();
   const { t } = useTranslation();
   const author = idea.authorName || getUserById(idea.authorId)?.name || t("teamMember");
-  const dept   = getDepartmentName(idea.departmentId);
-  const cat    = getCategoryLabel(idea.categoryId);
+  const authorUser = lookupUser(idea.authorId);
+  const authorAvatarUrl =
+    resolveAvatarUrl(idea.authorAvatarUrl) ||
+    authorUser?.avatarUrl ||
+    null;
+  const title = display?.title ?? idea.title;
+  const description = display?.description ?? idea.description;
+  const dept = getDepartmentName(idea.departmentId);
+  const cat = display?.categoryLabel ?? idea.categoryId;
   const badge = getIdeaStatusBadge(idea.progressStatus, t);
-  const showAiReviewed =
-    idea.aiReviewed && normalizeProgressStatus(idea.progressStatus) === "submitted";
+  const showAiChallenged = hasAiChallengeCompleted(idea);
+  const showStrategicAnalysis = hasStrategicAnalysis(idea);
 
   return (
     <Link to={`/ideas/${idea.id}`} style={{ textDecoration: "none", color: "inherit" }}>
@@ -45,8 +54,11 @@ export default function IdeaFeedCard({ idea }) {
         <div className="idea-feed-card__top">
           <div className="ds-row" style={{ gap: "var(--space-2)", flexWrap: "wrap", alignItems: "center" }}>
             <span className={`ds-badge ${badge.cls}`}>{badge.label}</span>
-            {showAiReviewed && (
+            {showAiChallenged && (
               <span className="ds-badge ds-badge-purple">{t("idea.aiReviewedBadge")}</span>
+            )}
+            {showStrategicAnalysis && (
+              <span className="ds-badge ds-badge-accent">{t("idea.aiStrategicAnalysisBadge")}</span>
             )}
           </div>
           <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)" }}>{cat}</span>
@@ -62,7 +74,7 @@ export default function IdeaFeedCard({ idea }) {
             lineHeight: "var(--leading-snug)",
           }}
         >
-          {idea.title}
+          {title}
         </h3>
 
         {/* Excerpt */}
@@ -74,9 +86,9 @@ export default function IdeaFeedCard({ idea }) {
             margin: 0,
           }}
         >
-          {idea.description.length > 150
-            ? `${idea.description.slice(0, 150)}…`
-            : idea.description}
+          {description.length > 150
+            ? `${description.slice(0, 150)}…`
+            : description}
         </p>
 
         {/* Meta row */}
@@ -91,7 +103,16 @@ export default function IdeaFeedCard({ idea }) {
             color: "var(--color-text-muted)",
           }}
         >
-          <span style={{ fontWeight: 600 }}>{author}</span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <ProfileAvatar
+              name={author}
+              initials={(authorUser?.avatarInitials) || author.slice(0, 2).toUpperCase()}
+              avatarUrl={authorAvatarUrl}
+              size={24}
+              style={{ fontSize: "0.55rem", border: "1px solid rgba(255,255,255,0.12)", boxShadow: "none" }}
+            />
+            <span style={{ fontWeight: 600 }}>{author}</span>
+          </span>
           <span>{dept}</span>
           <span
             style={{

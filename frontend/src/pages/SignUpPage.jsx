@@ -1,15 +1,24 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import AuthLanguageToggle from "../components/auth/AuthLanguageToggle";
 import SocratixLogo from "../components/ds/SocratixLogo";
 import Icon from "../components/ds/Icon";
-import { categories, departments } from "../data/mockData";
+import { departments } from "../data/mockData";
 import { useSocratixStore } from "../data/SocratixStoreProvider";
 import { useTranslation } from "../i18n/useTranslation";
 
-function Field({ id, label, children }) {
+function Field({ id, label, children, optional }) {
   return (
     <div>
-      <label className="ds-label" htmlFor={id}>{label}</label>
+      <label className="ds-label" htmlFor={id}>
+        {label}
+        {optional && (
+          <span style={{ fontWeight: 400, color: "var(--color-text-muted)" }}>
+            {" "}
+            ({optional})
+          </span>
+        )}
+      </label>
       {children}
     </div>
   );
@@ -26,7 +35,7 @@ export default function SignUpPage() {
   const [confirm, setConfirm]     = useState("");
   const [showPass, setShowPass]   = useState(false);
   const [deptId, setDeptId]       = useState("dept-rd");
-  const [interests, setInterests] = useState(new Set());
+  const [jobTitle, setJobTitle]   = useState("");
   const [error, setError]         = useState("");
   const [loading, setLoading]     = useState(false);
 
@@ -40,20 +49,12 @@ export default function SignUpPage() {
     []
   );
 
-  const toggle = (id) =>
-    setInterests((prev) => {
-      const n = new Set(prev);
-      n.has(id) ? n.delete(id) : n.add(id);
-      return n;
-    });
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!name.trim())       { setError(t("signUpNameRequired")); return; }
     if (!email.trim())      { setError(t("signUpEmailRequired")); return; }
     if (password.length < 6){ setError(t("signUpPasswordTooShort")); return; }
     if (password !== confirm){ setError(t("signUpPasswordMismatch")); return; }
-    if (interests.size === 0){ setError(t("signUpThemesRequired")); return; }
     setError("");
     setLoading(true);
     try {
@@ -62,7 +63,7 @@ export default function SignUpPage() {
         email: email.trim(),
         password,
         departmentId: deptId,
-        interests: Array.from(interests),
+        jobTitle: jobTitle.trim() || null,
       });
       navigate("/dashboard");
     } catch (err) {
@@ -73,7 +74,9 @@ export default function SignUpPage() {
   };
 
   return (
-    <div
+    <>
+      <AuthLanguageToggle />
+      <div
       style={{
         minHeight: "100vh",
         display: "flex",
@@ -84,7 +87,6 @@ export default function SignUpPage() {
       }}
     >
       <div style={{ width: "100%", maxWidth: 520 }}>
-        {/* Header */}
         <div className="ds-row" style={{ justifyContent: "center", marginBottom: "var(--space-8)", gap: "var(--space-4)" }}>
           <SocratixLogo size={46} />
           <div>
@@ -124,14 +126,12 @@ export default function SignUpPage() {
           )}
 
           <form className="ds-stack" onSubmit={handleSubmit}>
-            {/* Full name */}
             <Field id="su-name" label={t("signUpFullName")}>
               <input id="su-name" type="text" value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="ds-input" placeholder="e.g. Jordan Okonkwo" autoComplete="name" />
             </Field>
 
-            {/* Email */}
             <Field id="su-email" label={t("loginEmailLabel")}>
               <div style={{ position: "relative" }}>
                 <span style={{
@@ -147,7 +147,6 @@ export default function SignUpPage() {
               </div>
             </Field>
 
-            {/* Passwords side by side */}
             <div className="ds-row" style={{ alignItems: "flex-start", flexWrap: "wrap", gap: "var(--space-3)" }}>
               <div style={{ flex: "1 1 180px" }}>
                 <label className="ds-label" htmlFor="su-pass">{t("signUpPassword")}</label>
@@ -172,7 +171,6 @@ export default function SignUpPage() {
               </div>
             </div>
 
-            {/* Department */}
             <Field id="su-dept" label={t("signUpDepartment")}>
               <select id="su-dept" value={deptId}
                 onChange={(e) => setDeptId(e.target.value)} className="ds-select">
@@ -182,19 +180,11 @@ export default function SignUpPage() {
               </select>
             </Field>
 
-            {/* Interest chips */}
-            <div>
-              <span className="ds-label">{t("signUpThemes")}</span>
-              <div className="ds-chip-group">
-                {categories.map((c) => (
-                  <button key={c.id} type="button"
-                    className={`ds-chip ${interests.has(c.id) ? "ds-chip-selected" : ""}`}
-                    onClick={() => toggle(c.id)}>
-                    {c.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <Field id="su-job" label={t("signUpJobTitle")} optional={t("optional")}>
+              <input id="su-job" type="text" value={jobTitle}
+                onChange={(e) => setJobTitle(e.target.value)}
+                className="ds-input" placeholder={t("signUpJobTitlePlaceholder")} autoComplete="organization-title" />
+            </Field>
 
             <button
               type="submit"
@@ -215,5 +205,6 @@ export default function SignUpPage() {
         </div>
       </div>
     </div>
+    </>
   );
 }

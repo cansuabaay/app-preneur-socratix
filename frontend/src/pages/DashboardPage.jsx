@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
 import IdeaFeedCard from "../components/ideas/IdeaFeedCard";
 import Icon from "../components/ds/Icon";
+import { useIdeaTranslations } from "../hooks/useIdeaTranslations";
 import { useSocratixStore } from "../data/SocratixStoreProvider";
 import { useTranslation } from "../i18n/useTranslation";
 
@@ -16,9 +17,10 @@ const FILTERS = [
 export default function DashboardPage() {
   const [filter, setFilter] = useState("all");
   const { getFilteredIdeas, currentUser } = useSocratixStore();
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
 
   const ideas = useMemo(() => getFilteredIdeas(filter), [getFilteredIdeas, filter]);
+  const { getDisplay } = useIdeaTranslations(ideas, language);
 
   return (
     <AppShell>
@@ -74,7 +76,11 @@ export default function DashboardPage() {
       ) : (
         <div className="ds-stack" style={{ marginTop: "var(--space-2)" }}>
           {ideas.map((idea) => (
-            <IdeaFeedCard key={idea.id} idea={idea} />
+            <IdeaFeedCard
+              key={idea.id}
+              idea={idea}
+              display={getDisplay(idea)}
+            />
           ))}
         </div>
       )}

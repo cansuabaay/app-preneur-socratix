@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
 import Icon from "../components/ds/Icon";
 import AiSuggestionsSection from "../components/AiSuggestionsSection/AiSuggestionsSection";
+import TranslatingIndicator from "../components/content/TranslatingIndicator";
 import { categories } from "../data/mockData";
 import { useSocratixStore } from "../data/SocratixStoreProvider";
+import { useTextTranslations } from "../hooks/useTextTranslations";
 import { useTranslation } from "../i18n/useTranslation";
 
 export default function CreateIdeaPage() {
@@ -19,7 +21,54 @@ export default function CreateIdeaPage() {
     dismissSimilar,
     createIdeaFromDraft,
   } = useSocratixStore();
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
+
+  const draftAiTexts = useMemo(() => {
+    if (!createDraft.aiVisible) return [];
+    const items = [];
+    if (createDraft.aiSummary) {
+      items.push({ id: "summary", text: createDraft.aiSummary });
+    }
+    for (const suggestion of createDraft.improvements || []) {
+      if (suggestion?.title) {
+        items.push({ id: `${suggestion.id}-title`, text: suggestion.title });
+      }
+      if (suggestion?.text) {
+        items.push({ id: suggestion.id, text: suggestion.text });
+      }
+    }
+    for (const warning of createDraft.similarWarnings || []) {
+      if (warning?.title) {
+        items.push({ id: `${warning.id}-title`, text: warning.title });
+      }
+      if (warning?.detail) {
+        items.push({ id: `${warning.id}-detail`, text: warning.detail });
+      }
+    }
+    return items;
+  }, [createDraft]);
+
+  const { getText: getDraftAiText, loading: translatingDraftAi } = useTextTranslations(
+    draftAiTexts,
+    language,
+    "create-draft-ai"
+  );
+
+  const displaySummary = createDraft.aiSummary
+    ? getDraftAiText("summary", createDraft.aiSummary)
+    : "";
+  const displayImprovements = (createDraft.improvements || []).map((suggestion) => ({
+    ...suggestion,
+    title: suggestion.title
+      ? getDraftAiText(`${suggestion.id}-title`, suggestion.title)
+      : "",
+    text: getDraftAiText(suggestion.id, suggestion.text),
+  }));
+  const displaySimilarWarnings = (createDraft.similarWarnings || []).map((warning) => ({
+    ...warning,
+    title: getDraftAiText(`${warning.id}-title`, warning.title),
+    detail: getDraftAiText(`${warning.id}-detail`, warning.detail),
+  }));
 
   const [formError, setFormError] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
@@ -111,7 +160,9 @@ export default function CreateIdeaPage() {
           onChange={(e) => updateCreateDraft({ categoryId: e.target.value })}
         >
           {categories.map((c) => (
-            <option key={c.id} value={c.id}>{c.label}</option>
+            <option key={c.id} value={c.id}>
+              {t(`categories.${c.id}`) !== `categories.${c.id}` ? t(`categories.${c.id}`) : c.label}
+            </option>
           ))}
         </select>
       </div>
@@ -141,13 +192,14 @@ export default function CreateIdeaPage() {
       {/* AI suggestions */}
       <AiSuggestionsSection
         visible={createDraft.aiVisible}
-        summary={createDraft.aiSummary}
-        improvements={createDraft.improvements}
-        similarWarnings={createDraft.similarWarnings}
+        summary={displaySummary}
+        improvements={displayImprovements}
+        similarWarnings={displaySimilarWarnings}
         onAccept={acceptSuggestion}
         onDismiss={dismissSuggestion}
         onAckSimilar={acknowledgeSimilar}
         onDismissSimilar={dismissSimilar}
+        translating={translatingDraftAi}
       />
     </AppShell>
   );

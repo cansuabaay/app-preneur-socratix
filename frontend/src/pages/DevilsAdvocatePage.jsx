@@ -3,23 +3,13 @@ import { useNavigate, useParams } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
 import { useSocratixStore } from "../data/SocratixStoreProvider";
 import { useTranslation } from "../i18n/useTranslation";
-import { ideasApi } from "../services/api";
-
-function extractQuestions(result) {
-  const loaded =
-    result?.devilQuestions ||
-    result?.questions ||
-    result?.data?.devilQuestions ||
-    result?.data?.questions ||
-    [];
-  return Array.isArray(loaded) ? loaded.filter((q) => String(q).trim()) : [];
-}
+import { buildReviewAnswers } from "../utils/reviewAnswers";
 
 export default function DevilsAdvocatePage() {
   const { ideaId } = useParams();
   const navigate = useNavigate();
-  const { getIdeaById, submitDevil } = useSocratixStore();
-  const { t } = useTranslation();
+  const { getIdeaById, submitDevil, generateDevilQuestions } = useSocratixStore();
+  const { t, language } = useTranslation();
   const idea = getIdeaById(ideaId);
 
   const [questions, setQuestions] = useState([]);
@@ -47,22 +37,22 @@ export default function DevilsAdvocatePage() {
     const id = String(idea.id);
     let cancelled = false;
 
-    const existing = extractQuestions({ questions: idea.devilQuestions });
-    if (existing.length > 0) {
-      setQuestions(existing);
-      setLoadingQuestions(false);
-      return;
-    }
-
     async function loadQuestions() {
       setLoadingQuestions(true);
       setLoadError("");
+      setStep(0);
 
       try {
-        const result = await ideasApi.generateDevilQuestions(id);
-        const loaded = extractQuestions(result);
+        const loaded = await generateDevilQuestions(
+          id,
+          language === "tr" ? "tr" : "en"
+        );
+        const nextQuestions = loaded.filter((q) => String(q).trim());
         if (!cancelled) {
-          setQuestions(loaded);
+          setQuestions(nextQuestions);
+          setAnswers(
+            Array.from({ length: Math.max(nextQuestions.length, 3) }, () => "")
+          );
         }
       } catch (error) {
         console.error(error);
@@ -70,7 +60,9 @@ export default function DevilsAdvocatePage() {
           setLoadError(t("devil.loadQuestionsError"));
         }
       } finally {
-        setLoadingQuestions(false);
+        if (!cancelled) {
+          setLoadingQuestions(false);
+        }
       }
     }
 
@@ -79,17 +71,7 @@ export default function DevilsAdvocatePage() {
     return () => {
       cancelled = true;
     };
-  }, [idea?.id, idea?.progressStatus, t]);
-
-  useEffect(() => {
-    const count = Math.max(questions.length, 3);
-    setAnswers((prev) => {
-      const next = [...prev];
-      while (next.length < count) next.push("");
-      return next.slice(0, count);
-    });
-    setStep(0);
-  }, [questions.length, ideaId]);
+  }, [idea?.id, idea?.progressStatus, language, t, generateDevilQuestions]);
 
   if (!ideaId) return null;
   if (!idea) {
@@ -136,7 +118,13 @@ export default function DevilsAdvocatePage() {
 
     setSubmitting(true);
     try {
-      await submitDevil({ ideaId: idea.id, answers: trimmed, skipped: false });
+      await submitDevil({
+        ideaId: idea.id,
+        answers: trimmed,
+        questions,
+        reviewAnswers: buildReviewAnswers(questions, trimmed),
+        skipped: false,
+      });
       navigate(`/ideas/${idea.id}`, { replace: true });
     } catch (err) {
       setLoadError(err?.message || t("devil.submitError"));
@@ -151,6 +139,7 @@ export default function DevilsAdvocatePage() {
       await submitDevil({
         ideaId: idea.id,
         answers: questions.map(() => ""),
+        questions,
         skipped: true,
       });
       navigate(`/ideas/${idea.id}`, { replace: true });
@@ -164,8 +153,7 @@ export default function DevilsAdvocatePage() {
   return (
     <AppShell>
       <div>
-        <h1 className="ds-heading-1" style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
-          <span style={{ fontSize: "1.8rem" }}>😈</span>
+        <h1 className="ds-heading-1">
           {t("devil.title")}
         </h1>
         <p className="ds-body" style={{ marginTop: "var(--space-2)" }}>

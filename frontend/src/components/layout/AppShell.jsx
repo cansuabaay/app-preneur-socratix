@@ -9,6 +9,7 @@ import { useTranslation } from "../../i18n/useTranslation";
 const NAV = [
   { to: "/dashboard", icon: "dashboard", labelKey: "dashboard" },
   { to: "/create",    icon: "plus",      labelKey: "createIdea" },
+  { to: "/users",     icon: "users",     labelKey: "users" },
   { to: "/messages",  icon: "comment",   labelKey: "messages" },
   { to: "/profile",   icon: "user",      labelKey: "profile" },
 ];

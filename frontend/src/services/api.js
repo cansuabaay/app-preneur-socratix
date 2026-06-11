@@ -47,6 +47,10 @@ function getAuthHeader() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+export function aiTargetLanguage(language) {
+  return language === "tr" ? "tr" : "en";
+}
+
 export function resolveAvatarUrl(avatarUrl) {
   if (!avatarUrl || !String(avatarUrl).trim()) return null;
   const path = String(avatarUrl).trim();
@@ -121,9 +125,10 @@ export const ideasApi = {
       method: "POST",
     }),
 
-  generateDevilQuestions: (ideaId) =>
+  generateDevilQuestions: (ideaId, targetLanguage = "en") =>
     request(`/ideas/${ideaId}/devil-questions`, {
       method: "POST",
+      body: JSON.stringify({ targetLanguage: aiTargetLanguage(targetLanguage) }),
     }),
 
   submitDevil: (ideaId, payload) =>
@@ -138,15 +143,31 @@ export const ideasApi = {
       body: JSON.stringify(payload),
     }),
 
-  analyzeDevilAdvocate: (ideaId) =>
+  analyzeDevilAdvocate: (ideaId, targetLanguage = "en", regenerate = false) =>
     request(`/ideas/${ideaId}/devil-advocate`, {
       method: "POST",
+      body: JSON.stringify({
+        targetLanguage: aiTargetLanguage(targetLanguage),
+        regenerate: Boolean(regenerate),
+      }),
+    }),
+
+  translateBatch: (payload) =>
+    request("/ideas/translate-batch", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  translateTexts: (payload) =>
+    request("/ideas/translate-texts", {
+      method: "POST",
+      body: JSON.stringify(payload),
     }),
 };
 
 /** POST /ideas/{ideaId}/devil-advocate — AI risk & improvement analysis (backend only). */
-export function analyzeIdeaWithAI(ideaId) {
-  return ideasApi.analyzeDevilAdvocate(ideaId);
+export function analyzeIdeaWithAI(ideaId, targetLanguage = "en", regenerate = false) {
+  return ideasApi.analyzeDevilAdvocate(ideaId, targetLanguage, regenerate);
 }
 
 /** POST /ideas/ai-improve — AI refinement suggestions for a draft idea (backend only). */

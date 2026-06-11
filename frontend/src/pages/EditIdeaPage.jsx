@@ -10,7 +10,7 @@ export default function EditIdeaPage() {
   const { ideaId } = useParams();
   const navigate = useNavigate();
   const { getIdeaById, currentUser, updateIdea } = useSocratixStore();
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const idea = getIdeaById(ideaId);
 
   const [title, setTitle] = useState("");
@@ -115,7 +115,9 @@ export default function EditIdeaPage() {
             onChange={(e) => setCategoryId(e.target.value)}
           >
             {categories.map((c) => (
-              <option key={c.id} value={c.id}>{c.label}</option>
+              <option key={c.id} value={c.id}>
+                {t(`categories.${c.id}`) !== `categories.${c.id}` ? t(`categories.${c.id}`) : c.label}
+              </option>
             ))}
           </select>
         </div>

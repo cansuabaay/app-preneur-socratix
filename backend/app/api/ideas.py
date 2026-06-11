@@ -9,10 +9,18 @@ from app.models.user import User
 from app.schemas.idea import (
     AiImproveRequest,
     AiImproveResponse,
+    AiLanguageRequest,
+    StrategicAnalysisRequest,
     CommentRequest,
     DevilAdvocateResponse,
     DevilQuestionsResponse,
     DevilRequest,
+    TranslateBatchRequest,
+    TranslateBatchResponse,
+    TranslateTextsRequest,
+    TranslateTextsResponse,
+    TranslatedIdeaItem,
+    TranslatedTextItem,
     IdeaCreate,
     IdeaOwnerUpdate,
     IdeaResponse,
@@ -21,6 +29,8 @@ from app.schemas.idea import (
 from app.services.ai_service import ai_service
 from app.services.auth_service import get_current_user
 from app.services.idea_service import idea_service
+from app.utils.strategic_analysis_context import build_strategic_analysis_context
+from app.utils.review_answers import answer_text, build_review_pairs
 
 router = APIRouter(prefix="/ideas", tags=["ideas"])
 
@@ -70,8 +80,51 @@ def ai_improve(
         payload.title,
         payload.description,
         payload.categoryId,
+        payload.targetLanguage,
     )
     return result
+
+
+@router.post("/translate-batch", response_model=TranslateBatchResponse)
+def translate_ideas_batch(
+    payload: TranslateBatchRequest,
+    _: User = Depends(get_current_user),
+):
+    source_items = [
+        {
+            "id": item.id,
+            "title": item.title.strip(),
+            "description": item.description.strip(),
+        }
+        for item in payload.items
+    ]
+    translated_items, used_live_ai = ai_service.translate_batch(
+        source_items,
+        payload.targetLang,
+    )
+    return TranslateBatchResponse(
+        items=[TranslatedIdeaItem(**item) for item in translated_items],
+        usedLiveAi=used_live_ai,
+    )
+
+
+@router.post("/translate-texts", response_model=TranslateTextsResponse)
+def translate_texts_batch(
+    payload: TranslateTextsRequest,
+    _: User = Depends(get_current_user),
+):
+    source_items = [
+        {"id": item.id, "text": item.text.strip()}
+        for item in payload.items
+    ]
+    translated_items, used_live_ai = ai_service.translate_texts_batch(
+        source_items,
+        payload.targetLang,
+    )
+    return TranslateTextsResponse(
+        items=[TranslatedTextItem(**item) for item in translated_items],
+        usedLiveAi=used_live_ai,
+    )
 
 
 @router.get("/{idea_id}", response_model=IdeaResponse)
@@ -134,6 +187,7 @@ def vote_idea(
 @router.post("/{idea_id}/devil-questions", response_model=DevilQuestionsResponse)
 def generate_devil_questions(
     idea_id: UUID,
+    payload: AiLanguageRequest = AiLanguageRequest(),
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
@@ -142,6 +196,7 @@ def generate_devil_questions(
         idea.title,
         idea.description,
         idea.categoryId,
+        payload.targetLanguage,
     )
     idea_service.set_devil_questions(db, idea, questions)
     return {"questions": questions}
@@ -157,18 +212,35 @@ def submit_devil(
     idea = get_existing_idea(db, idea_id)
 
     if not payload.skipped:
-        expected = len(idea.devilQuestions or [])
-        answers = payload.answers or []
-        if expected and len(answers) < expected:
+        review_payload = None
+        if payload.reviewAnswers is not None:
+            review_payload = [
+                item.model_dump() for item in payload.reviewAnswers
+            ]
+
+        pairs = build_review_pairs(
+            payload.questions or idea.devilQuestions or [],
+            payload.answers,
+            review_answers=review_payload,
+        )
+        expected = len(idea.devilQuestions or []) or len(pairs)
+        if expected and len(pairs) < expected:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Answer all AI review questions before submitting.",
             )
-        if expected and not all(str(a).strip() for a in answers[:expected]):
+        if pairs and not all(pair["answer"] for pair in pairs):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Each answer must be non-empty.",
             )
+        if not pairs and payload.answers:
+            answers = payload.answers or []
+            if not all(answer_text(a) for a in answers):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Each answer must be non-empty.",
+                )
 
     return idea_service.submit_devil(db, idea, payload)
 
@@ -176,20 +248,22 @@ def submit_devil(
 @router.post("/{idea_id}/devil-advocate", response_model=DevilAdvocateResponse)
 def devil_advocate(
     idea_id: UUID,
+    payload: StrategicAnalysisRequest = StrategicAnalysisRequest(),
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
     idea = get_existing_idea(db, idea_id)
-    analysis, used_live_ai = ai_service.analyze_idea(
-        idea.title,
-        idea.description,
-        idea.categoryId,
-    )
 
-    if used_live_ai:
-        idea.aiReviewed = True
-        db.commit()
-        db.refresh(idea)
+    if idea.strategicAnalysis and not payload.regenerate:
+        return {**idea.strategicAnalysis, "cached": True}
+
+    context = build_strategic_analysis_context(idea)
+    analysis, _ = ai_service.analyze_idea(context, payload.targetLanguage)
+    analysis["cached"] = False
+
+    idea.strategicAnalysis = {k: v for k, v in analysis.items() if k != "cached"}
+    db.commit()
+    db.refresh(idea)
 
     return analysis
 

@@ -8,6 +8,7 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from app.config import ACCESS_TOKEN_EXPIRE_MINUTES, ALGORITHM, SECRET_KEY
+from app.constants.innovation_roles import DEFAULT_INNOVATION_ROLE
 from app.database import get_db
 from app.models.user import User
 from app.schemas.auth import UserLogin, UserProfileUpdate, UserRegister
@@ -56,11 +57,15 @@ class AuthService:
                 detail="Email already registered",
             )
 
+        job_title = payload.jobTitle.strip() if payload.jobTitle else None
+
         user = User(
             name=payload.name.strip(),
             email=email,
             passwordHash=self.hash_password(payload.password),
             departmentId=payload.departmentId,
+            jobTitle=job_title or None,
+            innovationRole=DEFAULT_INNOVATION_ROLE,
             role="employee",
         )
 
@@ -85,7 +90,7 @@ class AuthService:
         self, db: Session, user: User, payload: UserProfileUpdate
     ) -> User:
         data = payload.model_dump(exclude_unset=True)
-        allowed = {"name", "departmentId", "bio"}
+        allowed = {"name", "departmentId", "jobTitle", "bio"}
 
         for field, value in data.items():
             if field not in allowed:
@@ -97,6 +102,8 @@ class AuthService:
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail="Name cannot be empty.",
                     )
+            if field == "jobTitle" and value is not None:
+                value = value.strip() or None
             if field == "bio" and value is not None:
                 value = value.strip() or None
             setattr(user, field, value)

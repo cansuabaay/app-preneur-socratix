@@ -15,6 +15,7 @@ from app.schemas.idea import (
     VoteToggleResponse,
     VoterSummary,
 )
+from app.utils.review_answers import build_review_pairs
 
 
 def _parse_voter_id(entry) -> str | None:
@@ -46,13 +47,17 @@ def _normalize_voters(db: Session, raw_voters: list | None) -> list[dict[str, st
         if isinstance(entry, dict):
             name = entry.get("name")
 
+        avatar_url = None
         user = db.query(User).filter(User.id == UUID(voter_id)).first()
         if user:
             name = user.name
+            avatar_url = user.avatarUrl
         elif not name:
             name = "User"
 
-        normalized.append({"id": voter_id, "name": name})
+        normalized.append(
+            {"id": voter_id, "name": name, "avatarUrl": avatar_url}
+        )
 
     return normalized
 
@@ -64,6 +69,18 @@ def _normalize_progress_status(status: str | None) -> str:
 
 
 class IdeaService:
+    def _attach_author_avatar(self, db: Session, idea: Idea) -> None:
+        author_avatar = None
+        author_id = str(idea.authorId or "").strip()
+        if author_id:
+            try:
+                author = db.query(User).filter(User.id == UUID(author_id)).first()
+                if author:
+                    author_avatar = author.avatarUrl
+            except (ValueError, TypeError):
+                author_avatar = None
+        idea.authorAvatarUrl = author_avatar
+
     def _sync_idea_fields(self, db: Session, idea: Idea, *, persist: bool) -> None:
         before_voters = idea.voters
         before_votes = idea.votes
@@ -98,6 +115,7 @@ class IdeaService:
         )
         for idea in ideas:
             self._sync_idea_fields(db, idea, persist=True)
+            self._attach_author_avatar(db, idea)
         return ideas
 
     def can_view_idea(self, idea: Idea, current_user: User) -> bool:
@@ -110,6 +128,7 @@ class IdeaService:
         idea = db.query(Idea).filter(Idea.id == idea_id).first()
         if idea:
             self._sync_idea_fields(db, idea, persist=True)
+            self._attach_author_avatar(db, idea)
         return idea
 
     def create_idea(self, db: Session, payload: IdeaCreate) -> Idea:
@@ -124,11 +143,13 @@ class IdeaService:
         data.setdefault("devilQuestions", [])
         data.setdefault("devilAnswers", [])
         data.setdefault("devilSkipped", False)
+        data.setdefault("strategicAnalysis", None)
 
         idea = Idea(**data)
         db.add(idea)
         db.commit()
         db.refresh(idea)
+        self._attach_author_avatar(db, idea)
         return idea
 
     def update_idea(self, db: Session, idea: Idea, payload: IdeaUpdate) -> Idea:
@@ -139,6 +160,7 @@ class IdeaService:
             setattr(idea, field, value)
         db.commit()
         db.refresh(idea)
+        self._attach_author_avatar(db, idea)
         return idea
 
     def update_idea_by_owner(self, db: Session, idea: Idea, payload: IdeaOwnerUpdate) -> Idea:
@@ -154,6 +176,7 @@ class IdeaService:
 
         db.commit()
         db.refresh(idea)
+        self._attach_author_avatar(db, idea)
         return idea
 
     def delete_idea(self, db: Session, idea: Idea) -> None:
@@ -171,7 +194,13 @@ class IdeaService:
             voters.pop(existing)
             voted = False
         else:
-            voters.append({"id": user_id, "name": current_user.name})
+            voters.append(
+                {
+                    "id": user_id,
+                    "name": current_user.name,
+                    "avatarUrl": current_user.avatarUrl,
+                }
+            )
             voted = True
 
         idea.voters = voters
@@ -190,19 +219,37 @@ class IdeaService:
         idea.devilQuestions = questions
         db.commit()
         db.refresh(idea)
+        self._attach_author_avatar(db, idea)
         return idea
 
     def submit_devil(self, db: Session, idea: Idea, payload: DevilRequest) -> Idea:
-        if payload.questions is not None:
-            idea.devilQuestions = payload.questions
+        if payload.skipped:
+            idea.devilAnswers = []
+            idea.devilSkipped = True
+            idea.progressStatus = "submitted"
+            idea.aiReviewed = False
+        else:
+            questions = list(payload.questions or idea.devilQuestions or [])
+            review_payload = None
+            if payload.reviewAnswers is not None:
+                review_payload = [
+                    item.model_dump() for item in payload.reviewAnswers
+                ]
 
-        idea.devilAnswers = payload.answers
-        idea.devilSkipped = payload.skipped
-        idea.progressStatus = "submitted"
-        idea.aiReviewed = not payload.skipped
+            pairs = build_review_pairs(
+                questions,
+                payload.answers,
+                review_answers=review_payload,
+            )
+            idea.devilAnswers = pairs
+            idea.devilQuestions = [pair["question"] for pair in pairs]
+            idea.devilSkipped = False
+            idea.progressStatus = "submitted"
+            idea.aiReviewed = True
 
         db.commit()
         db.refresh(idea)
+        self._attach_author_avatar(db, idea)
         return idea
 
     def add_comment(self, db: Session, idea: Idea, payload: CommentRequest) -> Idea:
@@ -222,6 +269,7 @@ class IdeaService:
 
         db.commit()
         db.refresh(idea)
+        self._attach_author_avatar(db, idea)
         return idea
 
 

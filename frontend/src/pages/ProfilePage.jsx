@@ -3,8 +3,9 @@ import { useNavigate } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
 import Icon from "../components/ds/Icon";
 import ProfileAvatar, { accentColorForInitials } from "../components/profile/ProfileAvatar";
-import { departments, getCategoryLabel, getDepartmentName } from "../data/mockData";
+import { departments, getDepartmentName } from "../data/mockData";
 import { useSocratixStore } from "../data/SocratixStoreProvider";
+import { innovationRoleLabel } from "../i18n/innovationRoles";
 import { useTranslation } from "../i18n/useTranslation";
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
@@ -22,8 +23,41 @@ function profileFormFromUser(user) {
   return {
     name: user?.name || "",
     departmentId: user?.departmentId || departments[0]?.id || "",
+    jobTitle: user?.jobTitle || "",
     bio: user?.bio || "",
   };
+}
+
+function ProfileDetailRow({ label, children }) {
+  return (
+    <div
+      className="ds-row-between"
+      style={{
+        gap: "var(--space-4)",
+        padding: "var(--space-3) 0",
+        borderBottom: "1px solid var(--glass-border)",
+        flexWrap: "wrap",
+      }}
+    >
+      <span
+        className="ds-body-sm"
+        style={{ color: "var(--color-text-muted)", minWidth: 120 }}
+      >
+        {label}
+      </span>
+      <span
+        className="ds-body-sm"
+        style={{
+          color: "var(--color-text-primary)",
+          fontWeight: 500,
+          textAlign: "right",
+          flex: "1 1 auto",
+        }}
+      >
+        {children}
+      </span>
+    </div>
+  );
 }
 
 export default function ProfilePage() {
@@ -67,8 +101,7 @@ export default function ProfilePage() {
 
   const dept = getDepartmentName(currentUser.departmentId);
   const avatarColor = accentColorForInitials(currentUser.avatarInitials);
-  const roleLabel =
-    currentUser.role === "employee" ? t("profile.role") : currentUser.role;
+  const innovationRole = innovationRoleLabel(currentUser.innovationRole, t);
 
   const resetPhotoDraft = () => {
     setPendingAvatarFile(null);
@@ -154,6 +187,7 @@ export default function ProfilePage() {
       await updateProfile({
         name: form.name.trim(),
         departmentId: form.departmentId || null,
+        jobTitle: form.jobTitle.trim() || null,
         bio: form.bio.trim() || null,
       });
 
@@ -216,19 +250,14 @@ export default function ProfilePage() {
             <div>
               <h1 className="ds-heading-2">{editing ? form.name || currentUser.name : currentUser.name}</h1>
               <p className="ds-body-sm" style={{ marginTop: "var(--space-1)" }}>
-                {roleLabel} · {dept}
+                {(editing ? form.jobTitle : currentUser.jobTitle) || dept}
+                {(editing ? form.jobTitle : currentUser.jobTitle) && (
+                  <span style={{ color: "var(--color-text-muted)" }}> · {dept}</span>
+                )}
               </p>
-              {currentUser.email && (
-                <p
-                  style={{
-                    fontSize: "var(--text-xs)",
-                    color: "var(--color-text-muted)",
-                    marginTop: "var(--space-1)",
-                  }}
-                >
-                  {currentUser.email}
-                </p>
-              )}
+              <span className="ds-badge ds-badge-purple" style={{ marginTop: "var(--space-2)", display: "inline-block" }}>
+                {innovationRole}
+              </span>
             </div>
           </div>
 
@@ -260,20 +289,32 @@ export default function ProfilePage() {
           </p>
         )}
 
-        {currentUser.interests?.length > 0 && !editing && (
-          <div className="ds-chip-group" style={{ marginTop: "var(--space-4)", position: "relative" }}>
-            {currentUser.interests.map((id) => (
-              <span
-                key={id}
-                className="ds-chip ds-chip-selected"
-                style={{ pointerEvents: "none" }}
-              >
-                {getCategoryLabel(id)}
-              </span>
-            ))}
-          </div>
-        )}
       </div>
+
+      {!editing && (
+        <div
+          style={{
+            background: "var(--glass-bg)",
+            border: "1px solid var(--glass-border)",
+            borderRadius: "var(--radius-xl)",
+            padding: "var(--space-6)",
+            backdropFilter: "var(--glass-blur)",
+          }}
+        >
+          <h2 className="ds-heading-3" style={{ margin: "0 0 var(--space-4)" }}>
+            {t("profile.accountDetails")}
+          </h2>
+          <ProfileDetailRow label={t("profile.fullName")}>{currentUser.name}</ProfileDetailRow>
+          <ProfileDetailRow label={t("profile.email")}>{currentUser.email}</ProfileDetailRow>
+          <ProfileDetailRow label={t("profile.department")}>{dept}</ProfileDetailRow>
+          <ProfileDetailRow label={t("profile.jobTitle")}>
+            {currentUser.jobTitle || t("profile.notSet")}
+          </ProfileDetailRow>
+          <ProfileDetailRow label={t("profile.innovationRole")}>
+            <span className="ds-badge ds-badge-purple">{innovationRole}</span>
+          </ProfileDetailRow>
+        </div>
+      )}
 
       {editing && (
         <div
@@ -346,6 +387,21 @@ export default function ProfilePage() {
           </div>
 
           <div>
+            <label className="ds-label" htmlFor="profile-email">
+              {t("profile.email")}
+            </label>
+            <input
+              id="profile-email"
+              type="email"
+              className="ds-input"
+              value={currentUser.email || ""}
+              readOnly
+              disabled
+              style={{ opacity: 0.7, cursor: "not-allowed" }}
+            />
+          </div>
+
+          <div>
             <label className="ds-label" htmlFor="profile-dept">
               {t("profile.department")}
             </label>
@@ -361,6 +417,33 @@ export default function ProfilePage() {
                 </option>
               ))}
             </select>
+          </div>
+
+          <div>
+            <label className="ds-label" htmlFor="profile-job-title">
+              {t("profile.jobTitle")}
+            </label>
+            <input
+              id="profile-job-title"
+              type="text"
+              className="ds-input"
+              value={form.jobTitle}
+              onChange={(e) => setForm((f) => ({ ...f, jobTitle: e.target.value }))}
+              placeholder={t("signUpJobTitlePlaceholder")}
+            />
+          </div>
+
+          <div>
+            <span className="ds-label">{t("profile.innovationRole")}</span>
+            <div style={{ marginTop: "var(--space-2)" }}>
+              <span className="ds-badge ds-badge-purple">{innovationRole}</span>
+              <p
+                className="ds-body-sm"
+                style={{ margin: "var(--space-2) 0 0", color: "var(--color-text-muted)" }}
+              >
+                {t("profile.innovationRoleHint")}
+              </p>
+            </div>
           </div>
 
           <div>

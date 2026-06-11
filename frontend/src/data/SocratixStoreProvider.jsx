@@ -8,7 +8,19 @@ import {
 } from "react";
 import { getCategoryLabel } from "./mockData";
 import { translate } from "../i18n/i18n";
-import { authApi, ideasApi, persistAccessToken, resolveAvatarUrl } from "../services/api";
+import {
+  authApi,
+  ideasApi,
+  persistAccessToken,
+  resolveAvatarUrl,
+  usersApi,
+} from "../services/api";
+import { normalizeImprovementList } from "../utils/aiImprovements";
+import {
+  buildReviewAnswers,
+  cacheDevilQuestions,
+  normalizeApiIdea,
+} from "../utils/reviewAnswers";
 
 const StoreContext = createContext(null);
 
@@ -69,7 +81,8 @@ export function normalizeApiUser(user) {
     avatarInitials: makeInitials(name || "User"),
     avatarUrl: resolveAvatarUrl(user?.avatarUrl),
     bio: user?.bio?.trim() || "",
-    interests: Array.isArray(user?.interests) ? user.interests : [],
+    jobTitle: user?.jobTitle?.trim() || "",
+    innovationRole: user?.innovationRole || "innovation_contributor",
   };
 }
 
@@ -78,6 +91,7 @@ const initialState = {
   language: readStoredLanguage(),
   toasts: [],
   currentUser: null,
+  userDirectory: {},
   ideas: [],
   createDraft: initialCreateDraft(),
   apiStatus: "idle",
@@ -106,11 +120,11 @@ function reducer(state, action) {
     case "SET_IDEAS":
       return {
         ...state,
-        ideas: action.payload,
+        ideas: (action.payload || []).map((idea) => normalizeApiIdea(idea)),
       };
 
     case "UPSERT_IDEA": {
-      const idea = action.payload;
+      const idea = normalizeApiIdea(action.payload);
       const ideaKey = String(idea.id);
       const exists = state.ideas.some((i) => String(i.id) === ideaKey);
 
@@ -120,6 +134,48 @@ function reducer(state, action) {
           ? state.ideas.map((i) => (String(i.id) === ideaKey ? idea : i))
           : [idea, ...state.ideas],
       };
+    }
+
+    case "PATCH_IDEA": {
+      const { ideaId, patch } = action.payload;
+      const ideaKey = String(ideaId);
+      const index = state.ideas.findIndex((idea) => String(idea.id) === ideaKey);
+      if (index === -1) {
+        return {
+          ...state,
+          ideas: [normalizeApiIdea({ id: ideaKey, ...patch }), ...state.ideas],
+        };
+      }
+      const nextIdeas = [...state.ideas];
+      nextIdeas[index] = normalizeApiIdea({ ...nextIdeas[index], ...patch });
+      return { ...state, ideas: nextIdeas };
+    }
+
+    case "SET_STRATEGIC_ANALYSIS": {
+      const { ideaId, strategicAnalysis } = action.payload;
+      const ideaKey = String(ideaId);
+      const index = state.ideas.findIndex((idea) => String(idea.id) === ideaKey);
+      const analysisPayload =
+        strategicAnalysis && typeof strategicAnalysis === "object"
+          ? { ...strategicAnalysis }
+          : null;
+
+      if (index === -1) {
+        return {
+          ...state,
+          ideas: [
+            normalizeApiIdea({ id: ideaKey, strategicAnalysis: analysisPayload }),
+            ...state.ideas,
+          ],
+        };
+      }
+
+      const nextIdeas = [...state.ideas];
+      nextIdeas[index] = normalizeApiIdea({
+        ...nextIdeas[index],
+        strategicAnalysis: analysisPayload,
+      });
+      return { ...state, ideas: nextIdeas };
     }
 
     case "REMOVE_IDEA":
@@ -152,6 +208,10 @@ function reducer(state, action) {
         isAuthenticated: true,
         currentUser: normalized,
         userSettings: readUserSettings(normalized.id),
+        userDirectory: {
+          ...state.userDirectory,
+          [normalized.id]: normalized,
+        },
       };
     }
 
@@ -160,14 +220,25 @@ function reducer(state, action) {
       return {
         ...state,
         currentUser: normalized,
+        userDirectory: {
+          ...state.userDirectory,
+          [normalized.id]: normalized,
+        },
       };
     }
+
+    case "SET_USER_DIRECTORY":
+      return {
+        ...state,
+        userDirectory: action.payload,
+      };
 
     case "LOG_OUT":
       return {
         ...initialState,
         language: readStoredLanguage(),
         ideas: [],
+        userDirectory: {},
         userSettings: defaultUserSettings(),
       };
 
@@ -199,9 +270,9 @@ function reducer(state, action) {
           ...state.createDraft,
           aiVisible: true,
           aiSummary: summary || "",
-          improvements: (improvements || []).map((text, index) => ({
+          improvements: normalizeImprovementList(improvements).map((item, index) => ({
+            ...item,
             id: `ai-${stamp}-${index}`,
-            text: String(text),
             status: "pending",
           })),
           similarWarnings: (similarWarnings || []).map((warning, index) => ({
@@ -278,7 +349,7 @@ function reducer(state, action) {
     }
 
     case "CREATE_IDEA_FROM_DRAFT": {
-      const newIdea = action.payload.idea;
+      const newIdea = normalizeApiIdea(action.payload.idea);
 
       return {
         ...state,
@@ -292,6 +363,7 @@ function reducer(state, action) {
 
     case "SET_DEVIL_QUESTIONS": {
       const { ideaId, questions } = action.payload;
+      cacheDevilQuestions(ideaId, questions);
       return {
         ...state,
         ideas: state.ideas.map((idea) =>
@@ -303,14 +375,18 @@ function reducer(state, action) {
     }
 
     case "SUBMIT_DEVIL": {
-      const { ideaId, answers, skipped } = action.payload;
+      const { ideaId, answers, skipped, questions, reviewAnswers } = action.payload;
+      const pairs = reviewAnswers?.length
+        ? reviewAnswers
+        : buildReviewAnswers(questions, answers);
       return {
         ...state,
         ideas: state.ideas.map((idea) =>
           String(idea.id) === String(ideaId)
             ? {
                 ...idea,
-                devilAnswers: answers,
+                devilAnswers: pairs,
+                devilQuestions: pairs.map((pair) => pair.question),
                 devilSkipped: skipped,
                 progressStatus: "submitted",
                 aiReviewed: !skipped,
@@ -413,12 +489,13 @@ export function SocratixStoreProvider({ children }) {
   }, []);
 
   const signUp = useCallback(async (payload) => {
-    const { name, email, password, departmentId } = payload;
+    const { name, email, password, departmentId, jobTitle } = payload;
     const data = await authApi.register({
       name,
       email,
       password,
       departmentId,
+      jobTitle: jobTitle || undefined,
     });
     persistAccessToken(data);
     dispatch({
@@ -446,17 +523,35 @@ export function SocratixStoreProvider({ children }) {
     return user;
   }, []);
 
+  const loadUserDirectory = useCallback(async () => {
+    try {
+      const users = await usersApi.list();
+      const directory = {};
+      for (const user of users || []) {
+        const normalized = normalizeApiUser(user);
+        if (normalized.id) {
+          directory[normalized.id] = normalized;
+        }
+      }
+      dispatch({ type: "SET_USER_DIRECTORY", payload: directory });
+    } catch {
+      /* directory is optional; avatars fall back to initials */
+    }
+  }, []);
+
   const uploadAvatar = useCallback(async (file) => {
     const user = await authApi.uploadAvatar(file);
     dispatch({ type: "UPDATE_USER", payload: { user } });
+    await loadUserDirectory();
     return user;
-  }, []);
+  }, [loadUserDirectory]);
 
   const removeAvatar = useCallback(async () => {
     const user = await authApi.removeAvatar();
     dispatch({ type: "UPDATE_USER", payload: { user } });
+    await loadUserDirectory();
     return user;
-  }, []);
+  }, [loadUserDirectory]);
 
   const updateCreateDraft = useCallback((payload) => {
     dispatch({ type: "UPDATE_CREATE_DRAFT", payload });
@@ -472,9 +567,10 @@ export function SocratixStoreProvider({ children }) {
       title: title.trim(),
       description: description.trim(),
       categoryId,
+      targetLanguage: state.language === "tr" ? "tr" : "en",
     });
     dispatch({ type: "SET_AI_IMPROVE", payload: result });
-  }, [state.createDraft]);
+  }, [state.createDraft, state.language]);
 
   const acceptSuggestion = useCallback((suggestionId) => {
     dispatch({ type: "ACCEPT_SUGGESTION", payload: { suggestionId } });
@@ -491,6 +587,21 @@ export function SocratixStoreProvider({ children }) {
   const dismissSimilar = useCallback((warningId) => {
     dispatch({ type: "DISMISS_SIMILAR_WARNING", payload: { warningId } });
   }, []);
+
+  const lookupUser = useCallback(
+    (userId) => {
+      if (userId == null) return null;
+      const key = String(userId);
+      if (state.userDirectory[key]) {
+        return state.userDirectory[key];
+      }
+      if (state.currentUser && String(state.currentUser.id) === key) {
+        return state.currentUser;
+      }
+      return null;
+    },
+    [state.userDirectory, state.currentUser]
+  );
 
   const loadIdeas = useCallback(async () => {
     dispatch({ type: "SET_API_STATUS", payload: { status: "loading" } });
@@ -510,7 +621,8 @@ export function SocratixStoreProvider({ children }) {
   useEffect(() => {
     if (!state.isAuthenticated) return;
     loadIdeas();
-  }, [state.isAuthenticated, loadIdeas]);
+    loadUserDirectory();
+  }, [state.isAuthenticated, loadIdeas, loadUserDirectory]);
 
   const createIdeaFromDraft = useCallback(async () => {
     if (!state.currentUser) return null;
@@ -558,13 +670,15 @@ export function SocratixStoreProvider({ children }) {
     }
   }, [state.currentUser, state.createDraft]);
 
-  const generateDevilQuestions = useCallback(async (ideaId) => {
-    const data = await ideasApi.generateDevilQuestions(ideaId);
+  const generateDevilQuestions = useCallback(async (ideaId, targetLanguage = "en") => {
+    const data = await ideasApi.generateDevilQuestions(ideaId, targetLanguage);
+    const questions = data.questions || [];
+    cacheDevilQuestions(ideaId, questions);
     dispatch({
       type: "SET_DEVIL_QUESTIONS",
-      payload: { ideaId, questions: data.questions || [] },
+      payload: { ideaId, questions },
     });
-    return data.questions || [];
+    return questions;
   }, []);
 
   const updateIdea = useCallback(async (ideaId, payload) => {
@@ -584,14 +698,40 @@ export function SocratixStoreProvider({ children }) {
         (idea) => String(idea.id) === String(payload.ideaId)
       );
 
-      dispatch({ type: "SUBMIT_DEVIL", payload });
+      const questions =
+        payload.questions?.length > 0
+          ? payload.questions
+          : currentIdea?.devilQuestions?.length > 0
+            ? currentIdea.devilQuestions
+            : [];
+
+      const reviewAnswers = payload.reviewAnswers?.length
+        ? payload.reviewAnswers
+        : buildReviewAnswers(questions, payload.answers);
+
+      const submitPayload = {
+        ideaId: payload.ideaId,
+        answers: payload.answers,
+        skipped: payload.skipped,
+        questions,
+        reviewAnswers,
+      };
+
+      dispatch({ type: "SUBMIT_DEVIL", payload: submitPayload });
 
       try {
-        const updatedIdea = await ideasApi.submitDevil(payload.ideaId, {
+        const apiBody = {
           answers: payload.answers,
-          questions: currentIdea?.devilQuestions || [],
           skipped: payload.skipped,
-        });
+        };
+        if (questions.length > 0) {
+          apiBody.questions = questions;
+        }
+        if (reviewAnswers.length > 0) {
+          apiBody.reviewAnswers = reviewAnswers;
+        }
+
+        const updatedIdea = await ideasApi.submitDevil(payload.ideaId, apiBody);
 
         dispatch({ type: "UPSERT_IDEA", payload: updatedIdea });
       } catch (error) {
@@ -603,6 +743,35 @@ export function SocratixStoreProvider({ children }) {
       }
     },
     [state.ideas]
+  );
+
+  const fetchIdeaById = useCallback(async (ideaId) => {
+    const idea = await ideasApi.get(ideaId);
+    dispatch({ type: "UPSERT_IDEA", payload: idea });
+    return idea;
+  }, []);
+
+  const runStrategicAnalysis = useCallback(
+    async (ideaId, targetLanguage = "en", regenerate = false) => {
+      const analysis = await ideasApi.analyzeDevilAdvocate(
+        ideaId,
+        targetLanguage,
+        regenerate
+      );
+      const stored = { ...analysis };
+      delete stored.cached;
+
+      dispatch({
+        type: "SET_STRATEGIC_ANALYSIS",
+        payload: {
+          ideaId,
+          strategicAnalysis: stored,
+        },
+      });
+
+      return stored;
+    },
+    []
   );
 
   const addComment = useCallback(
@@ -692,18 +861,29 @@ export function SocratixStoreProvider({ children }) {
     [state.ideas, state.currentUser]
   );
 
-  const ideaVoters = useCallback((idea) => {
-    const raw = idea?.voters || [];
-    return raw.map((entry) => {
-      if (typeof entry === "string") {
-        return { id: String(entry), name: "User" };
-      }
-      return {
-        id: String(entry.id),
-        name: entry.name || "User",
-      };
-    });
-  }, []);
+  const ideaVoters = useCallback(
+    (idea) => {
+      const raw = idea?.voters || [];
+      return raw.map((entry) => {
+        if (typeof entry === "string") {
+          const known = lookupUser(entry);
+          return {
+            id: String(entry),
+            name: known?.name || "User",
+            avatarUrl: known?.avatarUrl || null,
+          };
+        }
+        const voterId = String(entry.id);
+        const known = lookupUser(voterId);
+        return {
+          id: voterId,
+          name: entry.name || known?.name || "User",
+          avatarUrl: resolveAvatarUrl(entry.avatarUrl) || known?.avatarUrl || null,
+        };
+      });
+    },
+    [lookupUser]
+  );
 
   const hasVotedOnIdea = useCallback(
     (idea) => {
@@ -726,6 +906,8 @@ export function SocratixStoreProvider({ children }) {
       signUp,
       logout,
       loadIdeas,
+      loadUserDirectory,
+      lookupUser,
       updateSettings,
       updateProfile,
       uploadAvatar,
@@ -742,6 +924,8 @@ export function SocratixStoreProvider({ children }) {
       deleteIdea,
       generateDevilQuestions,
       submitDevil,
+      fetchIdeaById,
+      runStrategicAnalysis,
       addComment,
       voteIdea,
       openMessagesWithUser,
@@ -759,6 +943,8 @@ export function SocratixStoreProvider({ children }) {
       signUp,
       logout,
       loadIdeas,
+      loadUserDirectory,
+      lookupUser,
       updateSettings,
       updateProfile,
       uploadAvatar,
@@ -775,6 +961,8 @@ export function SocratixStoreProvider({ children }) {
       deleteIdea,
       generateDevilQuestions,
       submitDevil,
+      fetchIdeaById,
+      runStrategicAnalysis,
       addComment,
       voteIdea,
       openMessagesWithUser,

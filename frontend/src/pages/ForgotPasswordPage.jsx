@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import AuthLanguageToggle from "../components/auth/AuthLanguageToggle";
 import SocratixLogo from "../components/ds/SocratixLogo";
 import Icon from "../components/ds/Icon";
 import { useSocratixStore } from "../data/SocratixStoreProvider";
@@ -69,7 +70,9 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <div
+    <>
+      <AuthLanguageToggle />
+      <div
       style={{
         minHeight: "100vh",
         display: "flex",
@@ -220,5 +223,6 @@ export default function ForgotPasswordPage() {
         </div>
       </div>
     </div>
+    </>
   );
 }

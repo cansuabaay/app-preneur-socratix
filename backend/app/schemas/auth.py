@@ -9,6 +9,7 @@ class UserRegister(BaseModel):
     email: str = Field(min_length=5, max_length=255)
     password: str = Field(min_length=6, max_length=100)
     departmentId: str | None = None
+    jobTitle: str | None = Field(default=None, max_length=120)
 
 
 class UserLogin(BaseModel):
@@ -19,6 +20,7 @@ class UserLogin(BaseModel):
 class UserProfileUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=120)
     departmentId: str | None = Field(default=None, max_length=100)
+    jobTitle: str | None = Field(default=None, max_length=120)
     bio: str | None = Field(default=None, max_length=2000)
 
 
@@ -27,6 +29,8 @@ class UserResponse(BaseModel):
     name: str
     email: str
     departmentId: str | None = None
+    jobTitle: str | None = None
+    innovationRole: str
     avatarUrl: str | None = None
     bio: str | None = None
     role: str

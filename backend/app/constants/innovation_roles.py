@@ -1,0 +1,17 @@
+"""Company-assigned innovation roles (not self-selected at signup)."""
+
+INNOVATION_ROLE_CONTRIBUTOR = "innovation_contributor"
+INNOVATION_ROLE_MANAGER = "innovation_manager"
+INNOVATION_ROLE_DEPARTMENT_LEAD = "department_lead"
+INNOVATION_ROLE_PRODUCT_STRATEGIST = "product_strategist"
+
+DEFAULT_INNOVATION_ROLE = INNOVATION_ROLE_CONTRIBUTOR
+
+VALID_INNOVATION_ROLES = frozenset(
+    {
+        INNOVATION_ROLE_CONTRIBUTOR,
+        INNOVATION_ROLE_MANAGER,
+        INNOVATION_ROLE_DEPARTMENT_LEAD,
+        INNOVATION_ROLE_PRODUCT_STRATEGIST,
+    }
+)

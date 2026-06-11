@@ -127,5 +127,5 @@ def test_list_ideas_returns_normalized_voters(authenticated_client, auth_headers
     match = next(i for i in listed.json() if i["id"] == str(idea.id))
     assert match["votes"] == 1
     assert match["voters"] == [
-        {"id": str(test_user.id), "name": test_user.name}
+        {"id": str(test_user.id), "name": test_user.name, "avatarUrl": None}
     ]

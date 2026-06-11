@@ -28,6 +28,65 @@ def test_create_idea_defaults_to_draft(db):
     assert idea.devilQuestions == []
 
 
+def test_submit_devil_preserves_questions_when_payload_questions_empty(db):
+    idea = idea_service.create_idea(
+        db,
+        IdeaCreate(
+            title="Preserve questions",
+            description="Empty questions payload must not wipe stored questions.",
+            categoryId="cat-efficiency",
+        ),
+    )
+    idea_service.set_devil_questions(db, idea, DEVIL_QUESTIONS_FALLBACK)
+
+    from app.schemas.idea import DevilRequest
+
+    updated = idea_service.submit_devil(
+        db,
+        idea,
+        DevilRequest(
+            answers=["a1", "a2", "a3"],
+            questions=[],
+            skipped=False,
+        ),
+    )
+    assert updated.devilQuestions == DEVIL_QUESTIONS_FALLBACK
+    assert updated.devilAnswers == [
+        {"question": q, "answer": a}
+        for q, a in zip(DEVIL_QUESTIONS_FALLBACK, ["a1", "a2", "a3"])
+    ]
+
+
+def test_submit_devil_stores_review_answers_with_questions(db):
+    idea = idea_service.create_idea(
+        db,
+        IdeaCreate(
+            title="Structured review answers",
+            description="Store question+answer pairs.",
+            categoryId="cat-efficiency",
+        ),
+    )
+
+    from app.schemas.idea import DevilRequest, ReviewAnswerItem
+
+    pairs = [
+        ReviewAnswerItem(question="Q1?", answer="A1"),
+        ReviewAnswerItem(question="Q2?", answer="A2"),
+        ReviewAnswerItem(question="Q3?", answer="A3"),
+    ]
+    updated = idea_service.submit_devil(
+        db,
+        idea,
+        DevilRequest(reviewAnswers=pairs, skipped=False),
+    )
+    assert updated.devilAnswers == [
+        {"question": "Q1?", "answer": "A1"},
+        {"question": "Q2?", "answer": "A2"},
+        {"question": "Q3?", "answer": "A3"},
+    ]
+    assert updated.devilQuestions == ["Q1?", "Q2?", "Q3?"]
+
+
 def test_submit_devil_completed_sets_submitted_and_ai_reviewed(db):
     idea = idea_service.create_idea(
         db,

@@ -1,32 +1,45 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
+import AiImprovementCards from "../components/ideas/AiImprovementCards";
+import TranslatingIndicator from "../components/content/TranslatingIndicator";
+import AiStrategicAnalysisPanel from "../components/ideas/AiStrategicAnalysisPanel";
 import Icon from "../components/ds/Icon";
+import ProfileAvatar from "../components/profile/ProfileAvatar";
 import { getCategoryLabel, getDepartmentName, getUserById } from "../data/mockData";
 import { useSocratixStore } from "../data/SocratixStoreProvider";
+import { useIdeaTranslations } from "../hooks/useIdeaTranslations";
+import { useReviewTranslations } from "../hooks/useReviewTranslations";
+import { useTextTranslations } from "../hooks/useTextTranslations";
+import { preloadIdeaDetailTranslations } from "../services/translationPreloader";
 import { useTranslation } from "../i18n/useTranslation";
-import { getIdeaStatusBadge, normalizeProgressStatus } from "../i18n/statusLabels";
-import { analyzeIdeaWithAI } from "../services/api";
+import { getIdeaStatusBadge } from "../i18n/statusLabels";
+import { resolveAvatarUrl } from "../services/api";
+import { resolveImprovementDisplay } from "../utils/aiImprovements";
+import { parseAiRefinementsFromDescription } from "../utils/parseAiRefinements";
+import { hasAiChallengeCompleted } from "../utils/reviewAnswers";
+import { hasStrategicAnalysis, normalizeStrategicAnalysis } from "../utils/strategicAnalysis";
 
-const AVATAR_COLORS = ["#4f8ef7", "#6366f1", "#a855f7", "#0d9488", "#f97316", "#ec4899"];
+function UserAvatar({ userId, name, avatarUrl, size = 32 }) {
+  const initials = (name || "?")
+    .split(" ")
+    .map((p) => p[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 
-function Avatar({ name, size = 32 }) {
-  const initials = name.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase();
-  const color = AVATAR_COLORS[name.charCodeAt(0) % AVATAR_COLORS.length];
   return (
-    <div
-      className="ds-avatar"
-      title={name}
+    <ProfileAvatar
+      name={name}
+      initials={initials}
+      avatarUrl={avatarUrl}
+      size={size}
       style={{
-        width: size, height: size,
         fontSize: size * 0.3,
-        background: `linear-gradient(135deg, ${color}, ${color}99)`,
         border: "2px solid rgba(255,255,255,0.1)",
-        flexShrink: 0,
+        boxShadow: "none",
       }}
-    >
-      {initials}
-    </div>
+    />
   );
 }
 
@@ -34,29 +47,321 @@ export default function IdeaDetailPage() {
   const { ideaId } = useParams();
   const navigate = useNavigate();
   const {
-    getIdeaById,
+    ideas,
+    fetchIdeaById,
+    runStrategicAnalysis,
     voteIdea,
     addComment,
     deleteIdea,
     currentUser,
     ideaVoters,
     hasVotedOnIdea,
+    lookupUser,
   } = useSocratixStore();
-  const { t } = useTranslation();
-  const idea = getIdeaById(ideaId);
+  const { t, language } = useTranslation();
+  const idea = useMemo(
+    () => ideas.find((item) => ideaId != null && String(item.id) === String(ideaId)),
+    [ideas, ideaId]
+  );
+  const ideaList = useMemo(() => (idea ? [idea] : []), [idea]);
+  const { getDisplay, isLoading: isIdeaTranslating } = useIdeaTranslations(ideaList, language);
+  const display = idea ? getDisplay(idea) : null;
   const [comment, setComment] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState("");
-  const [aiResult, setAiResult] = useState(null);
+  const [ideaLoading, setIdeaLoading] = useState(true);
+  const [pendingStrategicAnalysis, setPendingStrategicAnalysis] = useState(null);
+
+  useEffect(() => {
+    setPendingStrategicAnalysis(null);
+  }, [ideaId]);
+
+  const parsedDescription = useMemo(
+    () => parseAiRefinementsFromDescription(idea?.description ?? ""),
+    [idea?.description]
+  );
+
+
+  useEffect(() => {
+    if (!ideaId) return;
+    let active = true;
+    setIdeaLoading(true);
+    fetchIdeaById(ideaId)
+      .catch(() => {})
+      .finally(() => {
+        if (active) setIdeaLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [ideaId, fetchIdeaById]);
+
+  useEffect(() => {
+    if (!idea || ideaLoading) return;
+    preloadIdeaDetailTranslations(
+      {
+        ...idea,
+        strategicAnalysis: pendingStrategicAnalysis ?? idea.strategicAnalysis,
+      },
+      language
+    );
+  }, [idea, ideaLoading, language, pendingStrategicAnalysis]);
 
   const author = useMemo(() => {
     if (!idea) return "";
     return idea.authorName || getUserById(idea.authorId)?.name || t("teamMember");
   }, [idea, t]);
 
+  const authorAvatarUrl = useMemo(() => {
+    if (!idea) return null;
+    const authorUser = lookupUser(idea.authorId);
+    return resolveAvatarUrl(idea.authorAvatarUrl) || authorUser?.avatarUrl || null;
+  }, [idea, lookupUser]);
+
   useEffect(() => {
-    if (!idea) navigate("/dashboard", { replace: true });
-  }, [idea, navigate]);
+    if (!ideaLoading && !idea) navigate("/dashboard", { replace: true });
+  }, [idea, ideaLoading, navigate]);
+
+  const {
+    pairs: reviewPairs,
+    hasAnswers: hasReviewAnswers,
+    loading: translatingReview,
+  } = useReviewTranslations(idea, language);
+
+  const strategicAnalysisSource =
+    pendingStrategicAnalysis ?? idea?.strategicAnalysis ?? null;
+
+  const normalizedAiResult = useMemo(
+    () => normalizeStrategicAnalysis(strategicAnalysisSource),
+    [strategicAnalysisSource]
+  );
+  const savedStrategicAnalysis = Boolean(
+    normalizeStrategicAnalysis(pendingStrategicAnalysis) || hasStrategicAnalysis(idea)
+  );
+  const showAiChallengedBadge = hasAiChallengeCompleted(idea);
+
+  const detailTranslationItems = useMemo(() => {
+    if (!idea) return [];
+
+    const ideaId = String(idea.id);
+    const bodyBundle = `idea-body-${ideaId}`;
+    const embeddedBundle = `idea-embedded-refs-${ideaId}`;
+    const analysisBundle = `idea-analysis-${ideaId}`;
+    const commentsBundle = `comments-${ideaId}`;
+    const items = [];
+
+    if (parsedDescription.refinements.length > 0 && parsedDescription.body) {
+      items.push({
+        id: "desc-body",
+        text: parsedDescription.body,
+        bundleId: bodyBundle,
+      });
+    }
+
+    parsedDescription.refinements.forEach((item, index) => {
+      if (item.text) {
+        items.push({
+          id: `embedded-ref-${index}`,
+          text: item.text,
+          bundleId: embeddedBundle,
+        });
+      }
+      if (item.title) {
+        items.push({
+          id: `embedded-ref-${index}-title`,
+          text: item.title,
+          bundleId: embeddedBundle,
+        });
+      }
+    });
+
+    if (normalizedAiResult) {
+      if (normalizedAiResult.businessValueSummary) {
+        items.push({
+          id: "business-summary",
+          text: normalizedAiResult.businessValueSummary,
+          bundleId: analysisBundle,
+        });
+      }
+      if (normalizedAiResult.validationSummary) {
+        items.push({
+          id: "validation-summary",
+          text: normalizedAiResult.validationSummary,
+          bundleId: analysisBundle,
+        });
+      }
+      if (normalizedAiResult.recommendedNextStep) {
+        items.push({
+          id: "next-step",
+          text: normalizedAiResult.recommendedNextStep,
+          bundleId: analysisBundle,
+        });
+      }
+      if (normalizedAiResult.impactLevel) {
+        items.push({
+          id: "impact-level",
+          text: normalizedAiResult.impactLevel,
+          bundleId: analysisBundle,
+        });
+      }
+      (normalizedAiResult.strengths || []).forEach((item, index) => {
+        if (item) {
+          items.push({
+            id: `strength-${index}`,
+            text: item,
+            bundleId: analysisBundle,
+          });
+        }
+      });
+      (normalizedAiResult.risks || []).forEach((item, index) => {
+        if (item) {
+          items.push({
+            id: `risk-${index}`,
+            text: item,
+            bundleId: analysisBundle,
+          });
+        }
+      });
+    }
+
+    [...(idea.comments || [])].reverse().forEach((comment) => {
+      const body = String(comment?.body || "").trim();
+      if (comment?.id && body) {
+        items.push({
+          id: String(comment.id),
+          text: body,
+          bundleId: commentsBundle,
+        });
+      }
+    });
+
+    return items;
+  }, [idea, normalizedAiResult, parsedDescription.body, parsedDescription.refinements]);
+
+  const detailPriorityGroups = useMemo(() => {
+    const groups = [];
+    if (detailTranslationItems.some((item) => item.id === "desc-body")) {
+      groups.push(["desc-body"]);
+    }
+
+    const strategicPriority = [
+      "validation-summary",
+      "business-summary",
+      "next-step",
+      "impact-level",
+    ];
+    for (const id of strategicPriority) {
+      if (detailTranslationItems.some((item) => item.id === id)) {
+        groups.push([id]);
+      }
+    }
+
+    const strengthIds = detailTranslationItems
+      .map((item) => item.id)
+      .filter((id) => String(id).startsWith("strength-"));
+    if (strengthIds.length > 0) groups.push(strengthIds);
+
+    const riskIds = detailTranslationItems
+      .map((item) => item.id)
+      .filter((id) => String(id).startsWith("risk-"));
+    if (riskIds.length > 0) groups.push(riskIds);
+
+    const embeddedIds = detailTranslationItems
+      .map((item) => item.id)
+      .filter((id) => String(id).startsWith("embedded-ref-"));
+    if (embeddedIds.length > 0) groups.push(embeddedIds);
+
+    const commentIds = detailTranslationItems
+      .map((item) => item.id)
+      .filter(
+        (id) =>
+          !String(id).startsWith("embedded-ref-") &&
+          !String(id).startsWith("strength-") &&
+          !String(id).startsWith("risk-") &&
+          !["desc-body", "validation-summary", "business-summary", "next-step", "impact-level"].includes(
+            String(id)
+          )
+      );
+    if (commentIds.length > 0) groups.push(commentIds);
+
+    return groups;
+  }, [detailTranslationItems]);
+
+  const { getText: getDetailText, isLoading: isDetailTextLoading } = useTextTranslations(
+    detailTranslationItems,
+    language,
+    "idea-detail",
+    { priorityGroups: detailPriorityGroups }
+  );
+
+  const displayEmbeddedRefinements = useMemo(
+    () =>
+      parsedDescription.refinements.map((item, index) => {
+        const translatedText = getDetailText(`embedded-ref-${index}`, item.text);
+        const translatedTitle = item.title
+          ? getDetailText(`embedded-ref-${index}-title`, item.title)
+          : "";
+        const { title, description } = resolveImprovementDisplay({
+          title: translatedTitle,
+          text: translatedText,
+        });
+        return {
+          id: item.id,
+          text: description,
+          title,
+        };
+      }),
+    [parsedDescription.refinements, getDetailText]
+  );
+
+  const displayStrategicAnalysis = useMemo(() => {
+    if (!normalizedAiResult) return null;
+    return {
+      ...normalizedAiResult,
+      impactLevel: getDetailText("impact-level", normalizedAiResult.impactLevel),
+      businessValueSummary: getDetailText(
+        "business-summary",
+        normalizedAiResult.businessValueSummary
+      ),
+      validationSummary: getDetailText(
+        "validation-summary",
+        normalizedAiResult.validationSummary
+      ),
+      recommendedNextStep: getDetailText(
+        "next-step",
+        normalizedAiResult.recommendedNextStep
+      ),
+      strengths: (normalizedAiResult.strengths || []).map((item, index) =>
+        getDetailText(`strength-${index}`, item)
+      ),
+      risks: (normalizedAiResult.risks || []).map((risk, index) =>
+        getDetailText(`risk-${index}`, risk)
+      ),
+    };
+  }, [normalizedAiResult, getDetailText]);
+
+  const descriptionBody =
+    parsedDescription.refinements.length > 0
+      ? getDetailText("desc-body", parsedDescription.body)
+      : display?.description ?? idea?.description ?? "";
+
+  const translatingStrategicSummary =
+    isDetailTextLoading("validation-summary") ||
+    isDetailTextLoading("business-summary");
+  const translatingEmbeddedRefs = detailTranslationItems
+    .map((item) => item.id)
+    .some((id) => String(id).startsWith("embedded-ref-") && isDetailTextLoading(id));
+  const translatingDescriptionBody = isDetailTextLoading("desc-body");
+
+  if (ideaLoading && !idea) {
+    return (
+      <AppShell>
+        <p className="ds-body-sm" style={{ color: "var(--color-text-muted)" }}>
+          {t("loadingEllipsis")}
+        </p>
+      </AppShell>
+    );
+  }
 
   if (!idea) return null;
 
@@ -87,15 +392,18 @@ export default function IdeaDetailPage() {
     }
   };
 
-  const handleAiDevilAdvocate = async () => {
+  const handleStrategicAnalysis = async (regenerate = false) => {
     setAiError("");
     setAiLoading(true);
     try {
-      const result = await analyzeIdeaWithAI(idea.id);
-      setAiResult(result);
+      const result = await runStrategicAnalysis(
+        idea.id,
+        language === "tr" ? "tr" : "en",
+        regenerate
+      );
+      setPendingStrategicAnalysis(result);
     } catch (err) {
       setAiError(err?.message || t("idea.aiAnalysisError"));
-      setAiResult(null);
     } finally {
       setAiLoading(false);
     }
@@ -122,16 +430,30 @@ export default function IdeaDetailPage() {
             </button>
           </>
         )}
-        <button
-          type="button"
-          className="ds-btn ds-btn-primary ds-btn-sm"
-          onClick={handleAiDevilAdvocate}
-          disabled={aiLoading}
-          style={{ gap: "var(--space-2)" }}
-        >
-          <Icon name="sparkles" size={15} />
-          {aiLoading ? t("idea.aiAnalyzing") : t("idea.aiDevil")}
-        </button>
+        {!savedStrategicAnalysis && (
+          <button
+            type="button"
+            className="ds-btn ds-btn-primary ds-btn-sm"
+            onClick={() => handleStrategicAnalysis(false)}
+            disabled={aiLoading}
+            style={{ gap: "var(--space-2)" }}
+          >
+            <Icon name="sparkles" size={15} />
+            {aiLoading ? t("idea.aiAnalyzing") : t("idea.aiDevil")}
+          </button>
+        )}
+        {savedStrategicAnalysis && (
+          <button
+            type="button"
+            className="ds-btn ds-btn-secondary ds-btn-sm"
+            onClick={() => handleStrategicAnalysis(true)}
+            disabled={aiLoading}
+            style={{ gap: "var(--space-2)" }}
+          >
+            <Icon name="sparkles" size={15} />
+            {aiLoading ? t("idea.aiAnalyzing") : t("idea.regenerateAnalysis")}
+          </button>
+        )}
         {canResumeDevil && (
           <Link to={`/devil/${idea.id}`} className="ds-btn ds-btn-secondary ds-btn-sm">
             {t("idea.continueDevil")}
@@ -159,25 +481,32 @@ export default function IdeaDetailPage() {
           <div className="idea-feed-card__top">
             <div className="ds-row" style={{ gap: "var(--space-2)", flexWrap: "wrap", alignItems: "center" }}>
               <span className={`ds-badge ${badge.cls}`}>{badge.label}</span>
-              {idea.aiReviewed && normalizeProgressStatus(idea.progressStatus) === "submitted" && (
+              {showAiChallengedBadge && (
                 <span className="ds-badge ds-badge-purple">{t("idea.aiReviewedBadge")}</span>
+              )}
+              {savedStrategicAnalysis && (
+                <span className="ds-badge ds-badge-accent">{t("idea.aiStrategicAnalysisBadge")}</span>
               )}
             </div>
             <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)" }}>
-              {getCategoryLabel(idea.categoryId)}
+              {display?.categoryLabel ?? getCategoryLabel(idea.categoryId)}
             </span>
           </div>
           <h1
             className="ds-heading-2"
             style={{ marginTop: "var(--space-3)", lineHeight: "var(--leading-snug)" }}
           >
-            {idea.title}
+            {display?.title ?? idea.title}
           </h1>
+          <TranslatingIndicator
+            visible={idea ? isIdeaTranslating(idea.id) : false}
+            style={{ marginTop: "var(--space-2)" }}
+          />
           <div
             className="ds-row"
             style={{ marginTop: "var(--space-3)", gap: "var(--space-3)", flexWrap: "wrap" }}
           >
-            <Avatar name={author} size={28} />
+            <UserAvatar name={author} userId={idea.authorId} avatarUrl={authorAvatarUrl} size={28} />
             <span style={{ fontSize: "var(--text-sm)", color: "var(--color-text-secondary)" }}>
               <strong style={{ color: "var(--color-text-primary)" }}>{author}</strong>
               {" · "}
@@ -197,8 +526,25 @@ export default function IdeaDetailPage() {
               whiteSpace: "pre-wrap",
             }}
           >
-            {idea.description}
+            {descriptionBody}
           </p>
+          <TranslatingIndicator
+            visible={translatingDescriptionBody}
+            style={{ marginTop: "var(--space-2)" }}
+          />
+
+          {displayEmbeddedRefinements.length > 0 && (
+            <div style={{ marginTop: "var(--space-5)" }}>
+              <TranslatingIndicator
+                visible={translatingEmbeddedRefs}
+                style={{ marginBottom: "var(--space-2)" }}
+              />
+              <AiImprovementCards
+                title={t("idea.aiImprovementSectionTitle")}
+                items={displayEmbeddedRefinements}
+              />
+            </div>
+          )}
 
           <div
             className="ds-divider"
@@ -228,7 +574,12 @@ export default function IdeaDetailPage() {
                       title={u.name}
                       style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
                     >
-                      <Avatar name={u.name} size={30} />
+                      <UserAvatar
+                        userId={u.id}
+                        name={u.name}
+                        avatarUrl={u.avatarUrl}
+                        size={30}
+                      />
                       <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-secondary)" }}>
                         {u.name}
                       </span>
@@ -273,122 +624,99 @@ export default function IdeaDetailPage() {
         </div>
       )}
 
-      {aiResult && (
-        <section
-          className="ds-stack"
-          style={{
-            marginTop: "var(--space-5)",
-            background: "rgba(168,85,247,0.06)",
-            border: "1px solid rgba(168,85,247,0.22)",
-            borderRadius: "var(--radius-xl)",
-            padding: "var(--space-5) var(--space-6)",
-          }}
-        >
-          <div className="ds-row-between" style={{ alignItems: "flex-start", flexWrap: "wrap", gap: "var(--space-3)" }}>
-            <h2 className="ds-heading-3" style={{ margin: 0 }}>
-              {t("idea.aiPanelTitle")}
-            </h2>
-            <span className="ds-badge ds-badge-purple">
-              {t("idea.feasibility", { score: aiResult.feasibilityScore })}
-            </span>
-          </div>
-
-          {aiResult.summary && (
-            <p
-              style={{
-                margin: 0,
-                fontSize: "var(--text-sm)",
-                color: "var(--color-text-secondary)",
-                lineHeight: "var(--leading-relaxed)",
-              }}
-            >
-              {aiResult.summary}
-            </p>
-          )}
-
-          <div>
-            <h3
-              style={{
-                fontSize: "var(--text-xs)",
-                fontWeight: 700,
-                textTransform: "uppercase",
-                letterSpacing: "0.07em",
-                color: "var(--color-text-muted)",
-                margin: "0 0 var(--space-2)",
-              }}
-            >
-              {t("idea.risks")}
-            </h3>
-            <ul style={{ margin: 0, paddingLeft: "var(--space-5)", color: "var(--color-text-secondary)" }}>
-              {(aiResult.risks || []).map((risk, idx) => (
-                <li key={idx} style={{ marginBottom: "var(--space-2)", fontSize: "var(--text-sm)" }}>
-                  {risk}
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div>
-            <h3
-              style={{
-                fontSize: "var(--text-xs)",
-                fontWeight: 700,
-                textTransform: "uppercase",
-                letterSpacing: "0.07em",
-                color: "var(--color-text-muted)",
-                margin: "0 0 var(--space-2)",
-              }}
-            >
-              {t("idea.improvements")}
-            </h3>
-            <ul style={{ margin: 0, paddingLeft: "var(--space-5)", color: "var(--color-text-secondary)" }}>
-              {(aiResult.improvementSuggestions || []).map((item, idx) => (
-                <li key={idx} style={{ marginBottom: "var(--space-2)", fontSize: "var(--text-sm)" }}>
-                  {item}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </section>
+      {displayStrategicAnalysis && (
+        <AiStrategicAnalysisPanel
+          analysis={displayStrategicAnalysis}
+          translatingSummary={translatingStrategicSummary}
+          translatingDetails={
+            isDetailTextLoading("next-step") ||
+            isDetailTextLoading("impact-level") ||
+            detailTranslationItems
+              .map((item) => item.id)
+              .some(
+                (id) =>
+                  (String(id).startsWith("strength-") || String(id).startsWith("risk-")) &&
+                  isDetailTextLoading(id)
+              )
+          }
+        />
       )}
 
       {/* AI review responses */}
-      {idea.devilAnswers?.some((a) => a?.trim()) && (
+      {!idea.devilSkipped && (
         <section className="ds-stack">
-          <h2 className="ds-heading-3">{t("idea.aiReviewResponses")}</h2>
-          {(idea.devilQuestions || []).map((q, i) => (
-            <div
-              key={i}
-              style={{
-                background: "rgba(168,85,247,0.06)",
-                border: "1px solid rgba(168,85,247,0.18)",
-                borderRadius: "var(--radius-lg)",
-                padding: "var(--space-4) var(--space-5)",
-              }}
-            >
-              <p
+          <div>
+            <h2 className="ds-heading-3" style={{ margin: 0 }}>
+              {t("idea.aiReviewResponses")}
+            </h2>
+            <TranslatingIndicator
+              visible={translatingReview}
+              style={{ marginTop: "var(--space-2)" }}
+            />
+          </div>
+          {hasReviewAnswers ? (
+            reviewPairs.map((pair, i) => (
+              <div
+                key={i}
                 style={{
-                  fontWeight: 700,
-                  fontSize: "var(--text-sm)",
-                  color: "var(--color-text-primary)",
-                  margin: 0,
+                  background: "rgba(168,85,247,0.06)",
+                  border: "1px solid rgba(168,85,247,0.18)",
+                  borderRadius: "var(--radius-lg)",
+                  padding: "var(--space-4) var(--space-5)",
                 }}
               >
-                {q}
-              </p>
-              <p
-                style={{
-                  fontSize: "var(--text-sm)",
-                  color: "var(--color-text-secondary)",
-                  marginTop: "var(--space-3)",
-                  lineHeight: "var(--leading-relaxed)",
-                  whiteSpace: "pre-wrap",
-                }}
-              >
-                {idea.devilAnswers[i]?.trim() || "—"}
-              </p>
-            </div>
-          ))}
+                <p
+                  style={{
+                    margin: 0,
+                    fontSize: "var(--text-xs)",
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                    color: "var(--color-text-muted)",
+                  }}
+                >
+                  {t("idea.reviewQuestionLabel")}
+                </p>
+                <p
+                  style={{
+                    fontWeight: 700,
+                    fontSize: "var(--text-sm)",
+                    color: "var(--color-text-primary)",
+                    margin: "var(--space-2) 0 0",
+                  }}
+                >
+                  {pair.question || "—"}
+                </p>
+                <p
+                  style={{
+                    margin: "var(--space-4) 0 0",
+                    fontSize: "var(--text-xs)",
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                    color: "var(--color-text-muted)",
+                  }}
+                >
+                  {t("idea.reviewAnswerLabel")}
+                </p>
+                <p
+                  style={{
+                    fontSize: "var(--text-sm)",
+                    color: "var(--color-text-secondary)",
+                    margin: "var(--space-2) 0 0",
+                    lineHeight: "var(--leading-relaxed)",
+                    whiteSpace: "pre-wrap",
+                  }}
+                >
+                  {pair.answer || "—"}
+                </p>
+              </div>
+            ))
+          ) : (
+            <p className="ds-body-sm" style={{ color: "var(--color-text-muted)", margin: 0 }}>
+              {t("idea.aiReviewEmpty")}
+            </p>
+          )}
         </section>
       )}
 
@@ -400,24 +728,26 @@ export default function IdeaDetailPage() {
 
       {/* Discussion */}
       <section className="ds-stack">
-        <h2 className="ds-heading-3">
-          {t("idea.discussion")}
-          {(idea.comments?.length ?? 0) > 0 && (
-            <span
-              style={{
-                marginLeft: "var(--space-2)",
-                background: "rgba(79,142,247,0.15)",
-                color: "var(--color-brand)",
-                borderRadius: "var(--radius-full)",
-                padding: "2px 10px",
-                fontSize: "var(--text-xs)",
-                fontWeight: 800,
-              }}
-            >
-              {idea.comments.length}
-            </span>
-          )}
-        </h2>
+        <div>
+          <h2 className="ds-heading-3" style={{ margin: 0 }}>
+            {t("idea.discussion")}
+            {(idea.comments?.length ?? 0) > 0 && (
+              <span
+                style={{
+                  marginLeft: "var(--space-2)",
+                  background: "rgba(79,142,247,0.15)",
+                  color: "var(--color-brand)",
+                  borderRadius: "var(--radius-full)",
+                  padding: "2px 10px",
+                  fontSize: "var(--text-xs)",
+                  fontWeight: 800,
+                }}
+              >
+                {idea.comments.length}
+              </span>
+            )}
+          </h2>
+        </div>
 
         {(idea.comments || []).length === 0 ? (
           <p className="ds-body-sm">{t("idea.noComments")}</p>
@@ -436,7 +766,12 @@ export default function IdeaDetailPage() {
                   }}
                 >
                   <div className="ds-row" style={{ gap: "var(--space-3)", marginBottom: "var(--space-2)" }}>
-                    <Avatar name={who} size={26} />
+                    <UserAvatar
+                      userId={c.authorId}
+                      name={who}
+                      avatarUrl={lookupUser(c.authorId)?.avatarUrl}
+                      size={26}
+                    />
                     <div>
                       <span style={{ fontSize: "var(--text-sm)", fontWeight: 700, color: "var(--color-text-primary)" }}>
                         {who}
@@ -447,8 +782,12 @@ export default function IdeaDetailPage() {
                     </div>
                   </div>
                   <p style={{ margin: 0, fontSize: "var(--text-sm)", color: "var(--color-text-secondary)", lineHeight: "var(--leading-relaxed)", whiteSpace: "pre-wrap" }}>
-                    {c.body}
+                    {getDetailText(String(c.id), c.body)}
                   </p>
+                  <TranslatingIndicator
+                    visible={isDetailTextLoading(String(c.id))}
+                    style={{ marginTop: "var(--space-1)" }}
+                  />
                 </div>
               );
             })}

@@ -20,6 +20,7 @@ class IdeaBase(BaseModel):
     devilAnswers: list[Any] | None = None
     devilSkipped: bool | None = None
     aiPackageId: str | None = None
+    strategicAnalysis: dict[str, Any] | None = None
 
 
 class IdeaCreate(IdeaBase):
@@ -42,6 +43,7 @@ class IdeaOwnerUpdate(BaseModel):
 class VoterSummary(BaseModel):
     id: str
     name: str
+    avatarUrl: str | None = None
 
 
 class VoteToggleResponse(BaseModel):
@@ -50,9 +52,15 @@ class VoteToggleResponse(BaseModel):
     voters: list[VoterSummary] = Field(default_factory=list)
 
 
+class ReviewAnswerItem(BaseModel):
+    question: str = ""
+    answer: str = ""
+
+
 class DevilRequest(BaseModel):
     answers: list[Any] = Field(default_factory=list)
     questions: list[Any] | None = None
+    reviewAnswers: list[ReviewAnswerItem] | None = None
     skipped: bool = False
 
 
@@ -63,16 +71,33 @@ class CommentRequest(BaseModel):
 
 
 class DevilAdvocateResponse(BaseModel):
+    impactLevel: str = ""
+    impactScore: int = Field(default=5, ge=1, le=10)
+    strengths: list[str] = Field(default_factory=list)
     risks: list[str] = Field(default_factory=list)
+    validationSummary: str = ""
+    recommendedNextStep: str = ""
+    businessValueSummary: str = ""
     improvementSuggestions: list[str] = Field(default_factory=list)
-    feasibilityScore: int = Field(ge=1, le=10)
+    feasibilityScore: int = Field(default=5, ge=1, le=10)
     summary: str = ""
+    cached: bool = False
+
+
+class AiLanguageRequest(BaseModel):
+    targetLanguage: str = Field(default="en", pattern="^(en|tr)$")
+
+
+class StrategicAnalysisRequest(BaseModel):
+    targetLanguage: str = Field(default="en", pattern="^(en|tr)$")
+    regenerate: bool = False
 
 
 class AiImproveRequest(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     description: str = Field(min_length=1, max_length=5000)
     categoryId: str | None = None
+    targetLanguage: str = Field(default="en", pattern="^(en|tr)$")
 
 
 class SimilarWarningItem(BaseModel):
@@ -80,14 +105,64 @@ class SimilarWarningItem(BaseModel):
     detail: str = ""
 
 
+class ImprovementSuggestionItem(BaseModel):
+    category: str = ""
+    title: str = ""
+    detail: str = ""
+
+
 class AiImproveResponse(BaseModel):
-    improvements: list[str] = Field(default_factory=list)
+    improvements: list[ImprovementSuggestionItem] = Field(default_factory=list)
     similarWarnings: list[SimilarWarningItem] = Field(default_factory=list)
     summary: str = ""
 
 
 class DevilQuestionsResponse(BaseModel):
     questions: list[str] = Field(default_factory=list)
+
+
+class TranslateBatchItem(BaseModel):
+    id: str = Field(min_length=1, max_length=100)
+    title: str = Field(min_length=1, max_length=200)
+    description: str = Field(min_length=1, max_length=5000)
+
+
+class TranslateBatchRequest(BaseModel):
+    targetLang: str = Field(pattern="^(en|tr)$")
+    items: list[TranslateBatchItem] = Field(min_length=1, max_length=30)
+
+
+class TranslatedIdeaItem(BaseModel):
+    id: str
+    title: str
+    description: str
+    translated: bool = False
+
+
+class TranslateBatchResponse(BaseModel):
+    items: list[TranslatedIdeaItem] = Field(default_factory=list)
+    usedLiveAi: bool = False
+
+
+class TranslateTextItem(BaseModel):
+    id: str = Field(min_length=1, max_length=100)
+    text: str = Field(min_length=1, max_length=5000)
+
+
+class TranslateTextsRequest(BaseModel):
+    targetLang: str = Field(pattern="^(en|tr)$")
+    items: list[TranslateTextItem] = Field(min_length=1, max_length=50)
+
+
+class TranslatedTextItem(BaseModel):
+    id: str
+    text: str
+    translated: bool = False
+
+
+class TranslateTextsResponse(BaseModel):
+    items: list[TranslatedTextItem] = Field(default_factory=list)
+    usedLiveAi: bool = False
 
 
 class IdeaResponse(BaseModel):
@@ -100,6 +175,7 @@ class IdeaResponse(BaseModel):
     departmentId: str | None = None
     authorId: str | None = None
     authorName: str | None = None
+    authorAvatarUrl: str | None = None
     votes: int
     progressStatus: str
     aiReviewed: bool
@@ -110,3 +186,4 @@ class IdeaResponse(BaseModel):
     devilAnswers: list[Any] = Field(default_factory=list)
     devilSkipped: bool
     aiPackageId: str | None = None
+    strategicAnalysis: dict[str, Any] | None = None

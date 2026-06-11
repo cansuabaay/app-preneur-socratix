@@ -8,6 +8,7 @@ import DevilsAdvocatePage from "./pages/DevilsAdvocatePage";
 import IdeaDetailPage     from "./pages/IdeaDetailPage";
 import EditIdeaPage       from "./pages/EditIdeaPage";
 import MessagesPage       from "./pages/MessagesPage";
+import UsersPage          from "./pages/UsersPage";
 import ProfilePage        from "./pages/ProfilePage";
 import ProtectedRoute     from "./pages/ProtectedRoute";
 
@@ -27,6 +28,7 @@ export default function App() {
         <Route path="/devil/:ideaId"    element={<DevilsAdvocatePage />} />
         <Route path="/ideas/:ideaId/edit" element={<EditIdeaPage />} />
         <Route path="/ideas/:ideaId"    element={<IdeaDetailPage />} />
+        <Route path="/users"            element={<UsersPage />} />
         <Route path="/messages"         element={<MessagesPage />} />
         <Route path="/profile"          element={<ProfilePage />} />
       </Route>

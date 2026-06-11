@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import AppShell from "../components/layout/AppShell";
 import Icon from "../components/ds/Icon";
+import ProfileAvatar from "../components/profile/ProfileAvatar";
 import { getDepartmentName } from "../data/mockData";
-import { useSocratixStore } from "../data/SocratixStoreProvider";
+import { normalizeApiUser, useSocratixStore } from "../data/SocratixStoreProvider";
 import { useTranslation } from "../i18n/useTranslation";
 import { messagesApi } from "../services/api";
-
-const AVATAR_COLORS = ["#4f8ef7", "#6366f1", "#a855f7", "#0d9488", "#f97316", "#2563eb"];
 
 function formatTime(iso) {
   const d = new Date(iso);
@@ -16,23 +15,8 @@ function formatTime(iso) {
   return d.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
-function makeInitials(name) {
-  return (name || "?")
-    .split(" ")
-    .map((p) => p[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-}
-
-function avatarColorFor(id) {
-  const key = String(id ?? "");
-  const hash = key.split("").reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
-  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
-}
-
 export default function MessagesPage() {
-  const { currentUser } = useSocratixStore();
+  const { currentUser, loadUserDirectory } = useSocratixStore();
   const { t } = useTranslation();
 
   const [directory, setDirectory] = useState([]);
@@ -49,13 +33,19 @@ export default function MessagesPage() {
   const meId = currentUser?.id != null ? String(currentUser.id) : "";
 
   useEffect(() => {
+    loadUserDirectory();
+  }, [loadUserDirectory]);
+
+  useEffect(() => {
     let active = true;
 
     messagesApi
       .listUsers()
       .then((users) => {
         if (!active) return;
-        setDirectory(Array.isArray(users) ? users : []);
+        setDirectory(
+          (Array.isArray(users) ? users : []).map((user) => normalizeApiUser(user))
+        );
         setLoadStatus("ready");
       })
       .catch((err) => {
@@ -148,7 +138,6 @@ export default function MessagesPage() {
     }
   };
 
-  const peerColor = selected ? avatarColorFor(selected.id) : null;
 
   return (
     <AppShell>
@@ -225,7 +214,6 @@ export default function MessagesPage() {
 
           {directory.map((user) => {
             const isActive = String(user.id) === String(selectedId);
-            const color = avatarColorFor(user.id);
             return (
               <button
                 key={user.id}
@@ -247,18 +235,13 @@ export default function MessagesPage() {
                   transition: "all var(--transition-fast)",
                 }}
               >
-                <div
-                  className="ds-avatar"
-                  style={{
-                    width: 36,
-                    height: 36,
-                    fontSize: "0.65rem",
-                    background: `linear-gradient(135deg, ${color}, ${color}99)`,
-                    flexShrink: 0,
-                  }}
-                >
-                  {makeInitials(user.name)}
-                </div>
+                <ProfileAvatar
+                  name={user.name}
+                  initials={user.avatarInitials}
+                  avatarUrl={user.avatarUrl}
+                  size={36}
+                  style={{ fontSize: "0.65rem", boxShadow: "none", flexShrink: 0 }}
+                />
                 <div style={{ overflow: "hidden", minWidth: 0 }}>
                   <div
                     style={{
@@ -303,18 +286,13 @@ export default function MessagesPage() {
                 background: "rgba(79,142,247,0.06)",
               }}
             >
-              <div
-                className="ds-avatar"
-                style={{
-                  width: 36,
-                  height: 36,
-                  fontSize: "0.65rem",
-                  background: `linear-gradient(135deg, ${peerColor}, ${peerColor}99)`,
-                  flexShrink: 0,
-                }}
-              >
-                {makeInitials(selected.name)}
-              </div>
+              <ProfileAvatar
+                name={selected.name}
+                initials={selected.avatarInitials}
+                avatarUrl={selected.avatarUrl}
+                size={36}
+                style={{ fontSize: "0.65rem", boxShadow: "none", flexShrink: 0 }}
+              />
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontWeight: 700, fontSize: "var(--text-sm)", color: "var(--color-text-primary)" }}>
                   {selected.name}
