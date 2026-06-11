@@ -1,6 +1,10 @@
-# Socratix Progress
+# Socratix Progress — Final Delivery Status
 
-Local development MVP for a corporate innovation platform. Not production-deployed.
+Local development MVP for a corporate innovation platform. **Not production-deployed.**
+
+This document summarizes the **final delivered state** for academic submission. For weekly development history during the project, see the root-level [progress.md](../progress.md).
+
+---
 
 ## Completed
 
@@ -62,8 +66,8 @@ Three-stage lifecycle: **AI Enhancement** → **AI Validation** → **AI Strateg
 - **Static UI:** `frontend/src/i18n/en.json`, `tr.json`; `useTranslation()` for labels, buttons, errors, badges
 - **Dynamic content (display only):** Ideas (title/description), AI Enhancement text, AI Validation Q&A, AI Strategic Review fields, and comment bodies translate for the selected UI language
 - **Translation APIs:** `POST /ideas/translate-batch`, `POST /ideas/translate-texts` (JWT)
-- **Cache:** In-memory + `sessionStorage` cache by content id and target language; batched requests via `translationCoordinator`; original DB content is never overwritten
-- **UX:** Show original text immediately; small per-section “Translating…” indicator while async translation runs; cached translations appear instantly on language switch
+- **Cache and performance:** `localStorage` + in-memory translation cache (content-type, id, language, content hash); batched API requests; background preloading of the opposite language; per-section loading indicators; original DB content is never overwritten
+- **UX:** Show original text immediately; sections update individually when translations are ready
 
 ### 5) Messaging
 
@@ -76,18 +80,19 @@ Three-stage lifecycle: **AI Enhancement** → **AI Validation** → **AI Strateg
 - **Enterprise AI naming:** AI Enhancement, AI Validation, AI Strategic Review (TR equivalents in i18n)
 - **UI:** Premium dark design system; responsive auth, dashboard, idea detail, profile, Employee Directory, and messages pages
 - **Data:** Wired to FastAPI backend; `mockData.js` used only for category/department picklists
+- **Build:** `npm run build` passes for production bundle validation
 
 ### 7) Backend
 
 - **Stack:** FastAPI, PostgreSQL, SQLAlchemy
-- **JSONB fields on ideas:** `voters`, `comments`, validation Q&A, `strategicAnalysis`
+- **JSON columns:** `FlexibleJSON` type (JSONB on PostgreSQL; JSON on SQLite for tests) on `voters`, `comments`, validation Q&A, `strategicAnalysis`
 - **Lightweight migrations:** `db_migrations.py` adds columns on startup (e.g. `strategicAnalysis`, `jobTitle`, `innovationRole`)
 - **Static uploads:** Avatar files served from `/uploads`
 - **AI:** OpenAI / OpenRouter with configurable model; fallbacks when unconfigured or on failure
 
 ### 8) Tests
 
-Backend pytest (repository):
+Backend pytest — **45 tests passing** (repository):
 
 - `test_ai_improve`
 - `test_avatar_upload`
@@ -101,11 +106,25 @@ Backend pytest (repository):
 - `test_translate_texts`
 - `test_vote_toggle`
 
-## Not implemented (yet)
+Run: `cd backend && source venv/bin/activate && python -m pytest`
+
+---
+
+## Not implemented (yet) — Future improvements
+
+These items were planned in the original PRD/MVP vision but deferred to prioritize the deliverable innovation core:
 
 - **Production email delivery for password reset:** Forgot Password UI exists, but `POST /auth/forgot-password` and `POST /auth/reset-password` are not implemented on the backend (`auth.py` has no reset routes; `PasswordResetToken` model exists for schema only)
 - **Admin role management:** Internal `users.role` field exists; no admin UI or permission APIs for managing users or roles
 - **Production file storage for avatars:** Uploads are stored on the local filesystem under `uploads/avatars/`, not cloud object storage
+- **Enterprise SSO** (Azure AD / Okta)
+- **AI Daily Digest** and push/email notifications
+- **Advanced analytics** (Mixpanel/Amplitude, innovation dashboards)
+- **Production deployment** (hosting, monitoring, cloud storage)
+
+See [PRD](./PRD.md) **Final MVP Delivery Status** and root [MVP scope](../MVP_Kapsam_Socratix.md) for the full product vision vs. delivered scope.
+
+---
 
 ## Notes
 

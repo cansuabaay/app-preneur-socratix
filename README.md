@@ -148,17 +148,34 @@ npm run dev
 
 App: `http://localhost:5173` (default Vite port)
 
-## Documentation
+## Documentation Structure
 
-Planning and delivery documentation is in `/prodocs`:
+This repository separates **final submission documentation** from **project evolution history**.
 
-| Document | Description |
+### `/prodocs` — Final product documentation
+
+The `prodocs` folder contains the polished documentation prepared for academic submission and final delivery review:
+
+| Document | Role |
 |---|---|
-| [PRD](./prodocs/PRD.md) | Product requirements and user stories |
-| [Plan](./prodocs/Plan.md) | Development plan and milestones |
-| [Progress](./prodocs/Progress.md) | Implemented features and known limitations |
+| [PRD](./prodocs/PRD.md) | Product requirements, user stories, and delivery status |
+| [Plan](./prodocs/Plan.md) | Final implementation plan by phase |
+| [Progress](./prodocs/Progress.md) | Delivered features, tests, and known limitations |
 | [Design System](./prodocs/DesignSystem.md) | UI patterns and visual guidelines |
 | [Tech Stack](./prodocs/tech-stack.md) | Architecture and technology decisions |
+| [MVP Scope](./prodocs/MVP_Kapsam_Socratix.md) | MVP scope reference with final delivery summary |
 
-Additional root-level docs: [MVP scope](./MVP_Kapsam_Socratix.md), [Technical PRD](./TECH_PRD_Socratix.md), [Progress](./progress.md).
+### Repository root — Planning history and weekly progress
+
+Root-level documents are **preserved intentionally** as the record of how Socratix evolved across weekly development cycles. They should be read as historical planning and progress tracking, not as a duplicate of the final delivery package.
+
+| Document | Role |
+|---|---|
+| [README](./README.md) | Project overview, setup, and documentation map |
+| [MVP scope (root)](./MVP_Kapsam_Socratix.md) | Original MVP planning and vision |
+| [Technical PRD (root)](./TECH_PRD_Socratix.md) | Original technical PRD and requirements baseline |
+| [Plan (root)](./plan.md) | Early development plan and weekly task history |
+| [Progress (root)](./progress.md) | Ongoing implementation log during development |
+
+**How to use this structure:** Start with this README and `/prodocs` for the submitted product picture. Consult root-level files when you need context on earlier MVP decisions, scope changes, and weekly progress.
 
